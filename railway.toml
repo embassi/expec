@@ -1,0 +1,7 @@
+[build]
+builder = "nixpacks"
+buildCommand = "pnpm install && pnpm --filter api build"
+
+[deploy]
+startCommand = "node apps/api/dist/main"
+restartPolicyType = "on_failure"
