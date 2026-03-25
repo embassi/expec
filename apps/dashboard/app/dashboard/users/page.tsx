@@ -1,8 +1,9 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import { getSession } from '@/lib/auth';
+import { useFetch, mutate } from '@/lib/hooks';
 
 interface Membership {
   id: string;
@@ -26,42 +27,48 @@ const GLOBAL_ROLES = ['user', 'super_admin'];
 
 export default function UsersPage() {
   const router = useRouter();
-  const [users, setUsers] = useState<User[]>([]);
-  const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [updating, setUpdating] = useState<string | null>(null);
 
-  useEffect(() => {
-    const session = getSession();
-    if (session?.user?.role_type !== 'super_admin') {
-      router.replace('/dashboard');
-      return;
-    }
-    api.get<User[]>('/admin/users')
-      .then(setUsers)
-      .catch(console.error)
-      .finally(() => setLoading(false));
-  }, [router]);
+  const session = getSession();
+  if (session?.user?.role_type !== 'super_admin') {
+    router.replace('/dashboard');
+    return null;
+  }
+
+  const { data: users, isLoading } = useFetch<User[]>('/admin/users');
 
   async function handleRoleChange(userId: string, roleType: string) {
     setUpdating(userId);
     try {
       await api.patch(`/admin/users/${userId}/role`, { role_type: roleType });
-      setUsers(prev => prev.map(u => u.id === userId ? { ...u, role_type: roleType } : u));
-    } catch (e: any) {
-      alert(e.message);
+      mutate('/admin/users');
+    } catch (e: unknown) {
+      alert(e instanceof Error ? e.message : 'Failed');
     } finally {
       setUpdating(null);
     }
   }
 
-  if (loading) return <div className="text-gray-400 text-sm">Loading...</div>;
+  if (isLoading) return (
+    <div>
+      <div className="mb-6"><div className="h-7 w-24 bg-gray-100 rounded animate-pulse" /></div>
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="h-10 bg-gray-50 border-b border-gray-200" />
+        {[1,2,3,4].map(i => (
+          <div key={i} className="flex gap-4 px-4 py-3 border-b border-gray-100">
+            {[1,2,3,4,5].map(j => <div key={j} className="flex-1 h-4 bg-gray-100 rounded animate-pulse" />)}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 
   return (
     <div>
       <div className="mb-6">
         <h2 className="text-xl font-bold text-gray-900">Users</h2>
-        <p className="text-sm text-gray-500 mt-1">{users.length} users on the platform</p>
+        <p className="text-sm text-gray-500 mt-1">{(users || []).length} users on the platform</p>
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
@@ -77,7 +84,7 @@ export default function UsersPage() {
             </tr>
           </thead>
           <tbody>
-            {users.map(user => (
+            {(users || []).map(user => (
               <>
                 <tr key={user.id} className="border-b border-gray-50 hover:bg-gray-50">
                   <td className="px-4 py-3 font-mono text-xs text-gray-700">{user.phone_number}</td>
@@ -90,15 +97,10 @@ export default function UsersPage() {
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    <select
-                      value={user.role_type}
-                      disabled={updating === user.id}
+                    <select value={user.role_type} disabled={updating === user.id}
                       onChange={e => handleRoleChange(user.id, e.target.value)}
-                      className="text-xs border border-gray-200 rounded px-2 py-1 bg-white text-gray-700 disabled:opacity-50"
-                    >
-                      {GLOBAL_ROLES.map(r => (
-                        <option key={r} value={r}>{r}</option>
-                      ))}
+                      className="text-xs border border-gray-200 rounded px-2 py-1 bg-white text-gray-700 disabled:opacity-50">
+                      {GLOBAL_ROLES.map(r => <option key={r} value={r}>{r}</option>)}
                     </select>
                   </td>
                   <td className="px-4 py-3 text-gray-500 text-xs">
@@ -106,10 +108,8 @@ export default function UsersPage() {
                   </td>
                   <td className="px-4 py-3">
                     {user.memberships.length > 0 && (
-                      <button
-                        onClick={() => setExpanded(expanded === user.id ? null : user.id)}
-                        className="text-xs text-brand-600 hover:text-brand-800"
-                      >
+                      <button onClick={() => setExpanded(expanded === user.id ? null : user.id)}
+                        className="text-xs text-brand-600 hover:text-brand-800">
                         {expanded === user.id ? 'Hide' : 'Details'}
                       </button>
                     )}

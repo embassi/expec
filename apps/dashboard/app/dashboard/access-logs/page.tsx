@@ -1,6 +1,6 @@
 'use client';
-import { useEffect, useState } from 'react';
-import { api } from '@/lib/api';
+import { useState } from 'react';
+import { useFetch } from '@/lib/hooks';
 
 interface Community { id: string; name: string }
 interface Log {
@@ -14,35 +14,35 @@ interface Log {
 }
 
 export default function AccessLogsPage() {
-  const [communities, setCommunities] = useState<Community[]>([]);
   const [selected, setSelected] = useState('');
-  const [logs, setLogs] = useState<Log[]>([]);
-  const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    api.get<Community[]>('/admin/communities').then(cs => {
-      setCommunities(cs);
-      if (cs.length > 0) setSelected(cs[0].id);
-    });
-  }, []);
-
-  useEffect(() => {
-    if (!selected) return;
-    setLoading(true);
-    api.get<{ logs: Log[]; total: number }>(`/admin/communities/${selected}/access-logs`).then(r => setLogs(r.logs)).finally(() => setLoading(false));
-  }, [selected]);
+  const { data: communities } = useFetch<Community[]>('/admin/communities');
+  const communityId = selected || communities?.[0]?.id || '';
+  const { data, isLoading } = useFetch<{ logs: Log[]; total: number }>(
+    communityId ? `/admin/communities/${communityId}/access-logs` : null
+  );
+  const logs = data?.logs || [];
 
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-xl font-semibold">Access Logs</h2>
-        <select value={selected} onChange={e => setSelected(e.target.value)}
+        <select value={selected || communityId} onChange={e => setSelected(e.target.value)}
           className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500">
-          {communities.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          {(communities || []).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
       </div>
 
-      {loading ? <p className="text-gray-400 text-sm">Loading…</p> : (
+      {isLoading ? (
+        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+          <div className="h-10 bg-gray-50 border-b border-gray-200" />
+          {[1,2,3,4,5].map(i => (
+            <div key={i} className="flex gap-4 px-4 py-3 border-b border-gray-100">
+              {[1,2,3,4,5].map(j => <div key={j} className="flex-1 h-4 bg-gray-100 rounded animate-pulse" />)}
+            </div>
+          ))}
+        </div>
+      ) : (
         <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-200">

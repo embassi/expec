@@ -1,6 +1,7 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { api } from '@/lib/api';
+import { useFetch, mutate } from '@/lib/hooks';
 
 interface Community { id: string; name: string }
 interface Scanner {
@@ -14,10 +15,7 @@ interface Scanner {
 }
 
 export default function ScannersPage() {
-  const [communities, setCommunities] = useState<Community[]>([]);
   const [selected, setSelected] = useState('');
-  const [scanners, setScanners] = useState<Scanner[]>([]);
-  const [loading, setLoading] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ scanner_name: '', scanner_code: '', location_label: '' });
   const [saving, setSaving] = useState(false);
@@ -25,36 +23,29 @@ export default function ScannersPage() {
   const [assigning, setAssigning] = useState<Record<string, boolean>>({});
   const [assignPhone, setAssignPhone] = useState<Record<string, string>>({});
 
-  useEffect(() => {
-    api.get<Community[]>('/admin/communities').then(cs => {
-      setCommunities(cs);
-      if (cs.length > 0) setSelected(cs[0].id);
-    });
-  }, []);
-
-  useEffect(() => {
-    if (!selected) return;
-    setLoading(true);
-    api.get<Scanner[]>(`/admin/communities/${selected}/scanners`).then(setScanners).finally(() => setLoading(false));
-  }, [selected]);
+  const { data: communities } = useFetch<Community[]>('/admin/communities');
+  const communityId = selected || communities?.[0]?.id || '';
+  const { data: scanners, error: scannersError, isLoading } = useFetch<Scanner[]>(
+    communityId ? `/admin/communities/${communityId}/scanners` : null
+  );
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
     try {
-      const created = await api.post<Scanner>('/admin/scanners', { ...form, community_id: selected });
+      const created = await api.post<Scanner>('/admin/scanners', { ...form, community_id: communityId });
       setNewScanner(created);
       setShowForm(false);
       setForm({ scanner_name: '', scanner_code: '', location_label: '' });
-      setScanners(ss => [created, ...ss]);
+      mutate(`/admin/communities/${communityId}/scanners`);
     } finally {
       setSaving(false);
     }
   }
 
-  async function toggle(id: string) {
+  async function toggle(id: string, isActive: boolean) {
     await api.patch(`/admin/scanners/${id}/toggle`, {});
-    setScanners(ss => ss.map(s => s.id === id ? { ...s, is_active: !s.is_active } : s));
+    mutate(`/admin/communities/${communityId}/scanners`);
   }
 
   async function assignScanner(id: string) {
@@ -62,9 +53,9 @@ export default function ScannersPage() {
     if (!phone) return;
     setAssigning(a => ({ ...a, [id]: true }));
     try {
-      const updated = await api.patch<Scanner>(`/admin/scanners/${id}/assign`, { phone_number: phone });
-      setScanners(ss => ss.map(s => s.id === id ? { ...s, assigned_user: updated.assigned_user } : s));
+      await api.patch(`/admin/scanners/${id}/assign`, { phone_number: phone });
       setAssignPhone(p => ({ ...p, [id]: '' }));
+      mutate(`/admin/communities/${communityId}/scanners`);
     } finally {
       setAssigning(a => ({ ...a, [id]: false }));
     }
@@ -75,9 +66,9 @@ export default function ScannersPage() {
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-xl font-semibold">Scanners</h2>
         <div className="flex gap-3">
-          <select value={selected} onChange={e => setSelected(e.target.value)}
+          <select value={selected || communityId} onChange={e => setSelected(e.target.value)}
             className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500">
-            {communities.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            {(communities || []).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
           <button onClick={() => setShowForm(true)} className="bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium px-4 py-2 rounded-lg">
             + Add Scanner
@@ -122,14 +113,24 @@ export default function ScannersPage() {
         </div>
       )}
 
-      {loading ? <p className="text-gray-400 text-sm">Loading…</p> : (
+      {scannersError && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-6 text-sm text-red-700">
+          Failed to load scanners: {scannersError.message}. The database may need a migration — run the <code className="font-mono">ALTER TABLE scanners ADD COLUMN assigned_user_id</code> SQL in Supabase.
+        </div>
+      )}
+
+      {isLoading ? (
+        <div className="space-y-2">
+          {[1,2,3].map(i => <div key={i} className="h-14 bg-gray-100 rounded-xl animate-pulse" />)}
+        </div>
+      ) : (
         <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr><Th>Name</Th><Th>Location</Th><Th>Code</Th><Th>Assigned User</Th><Th>Status</Th><Th>Actions</Th></tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {scanners.map(s => (
+              {(scanners || []).map(s => (
                 <tr key={s.id}>
                   <td className="px-4 py-3 font-medium">{s.scanner_name}</td>
                   <td className="px-4 py-3 text-gray-500">{s.location_label || '—'}</td>
@@ -165,13 +166,15 @@ export default function ScannersPage() {
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    <button onClick={() => toggle(s.id)} className="text-xs text-brand-600 hover:underline">
+                    <button onClick={() => toggle(s.id, s.is_active)} className="text-xs text-brand-600 hover:underline">
                       {s.is_active ? 'Disable' : 'Enable'}
                     </button>
                   </td>
                 </tr>
               ))}
-              {scanners.length === 0 && <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400">No scanners yet</td></tr>}
+              {!isLoading && (scanners || []).length === 0 && !scannersError && (
+                <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400">No scanners yet</td></tr>
+              )}
             </tbody>
           </table>
         </div>

@@ -1,6 +1,7 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { api } from '@/lib/api';
+import { useFetch, mutate } from '@/lib/hooks';
 
 interface Community { id: string; name: string }
 interface Unit { id: string; unit_code: string }
@@ -16,11 +17,7 @@ interface Membership {
 type FormMode = 'owner' | 'manager';
 
 export default function MembershipsPage() {
-  const [communities, setCommunities] = useState<Community[]>([]);
   const [selected, setSelected] = useState('');
-  const [memberships, setMemberships] = useState<Membership[]>([]);
-  const [units, setUnits] = useState<Unit[]>([]);
-  const [loading, setLoading] = useState(false);
   const [updating, setUpdating] = useState('');
   const [resending, setResending] = useState('');
   const [showForm, setShowForm] = useState(false);
@@ -29,30 +26,20 @@ export default function MembershipsPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    api.get<Community[]>('/admin/communities').then(cs => {
-      setCommunities(cs);
-      if (cs.length > 0) setSelected(cs[0].id);
-    });
-  }, []);
-
-  useEffect(() => {
-    if (!selected) return;
-    setLoading(true);
-    Promise.all([
-      api.get<Membership[]>(`/admin/communities/${selected}/memberships`),
-      api.get<Unit[]>(`/admin/communities/${selected}/units`),
-    ]).then(([ms, us]) => {
-      setMemberships(ms);
-      setUnits(us);
-    }).finally(() => setLoading(false));
-  }, [selected]);
+  const { data: communities } = useFetch<Community[]>('/admin/communities');
+  const communityId = selected || communities?.[0]?.id || '';
+  const { data: memberships, isLoading } = useFetch<Membership[]>(
+    communityId ? `/admin/communities/${communityId}/memberships` : null
+  );
+  const { data: units } = useFetch<Unit[]>(
+    communityId ? `/admin/communities/${communityId}/units` : null
+  );
 
   async function updateStatus(id: string, status: string) {
     setUpdating(id);
     try {
       await api.patch(`/admin/memberships/${id}`, { approval_status: status });
-      setMemberships(ms => ms.map(m => m.id === id ? { ...m, approval_status: status } : m));
+      mutate(`/admin/communities/${communityId}/memberships`);
     } finally {
       setUpdating('');
     }
@@ -62,7 +49,6 @@ export default function MembershipsPage() {
     setResending(membershipId);
     try {
       await api.post(`/admin/memberships/${membershipId}/resend-invite`, {});
-      alert('Invite resent successfully');
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : 'Failed');
     } finally {
@@ -76,20 +62,18 @@ export default function MembershipsPage() {
     setError('');
     try {
       if (formMode === 'owner') {
-        await api.post(`/admin/communities/${selected}/assign-owner`, {
+        await api.post(`/admin/communities/${communityId}/assign-owner`, {
           phone_number: form.phone_number,
           unit_id: form.unit_id,
         });
       } else {
-        await api.post(`/admin/communities/${selected}/managers`, {
+        await api.post(`/admin/communities/${communityId}/managers`, {
           phone_number: form.phone_number,
         });
       }
       setShowForm(false);
       setForm({ phone_number: '', unit_id: '' });
-      // Reload memberships
-      const ms = await api.get<Membership[]>(`/admin/communities/${selected}/memberships`);
-      setMemberships(ms);
+      mutate(`/admin/communities/${communityId}/memberships`);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed');
     } finally {
@@ -102,12 +86,11 @@ export default function MembershipsPage() {
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-xl font-semibold">Memberships</h2>
         <div className="flex gap-3">
-          <select value={selected} onChange={e => setSelected(e.target.value)}
+          <select value={selected || communityId} onChange={e => setSelected(e.target.value)}
             className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500">
-            {communities.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            {(communities || []).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
-          <button onClick={() => setShowForm(true)}
-            className="bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium px-4 py-2 rounded-lg">
+          <button onClick={() => setShowForm(true)} className="bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium px-4 py-2 rounded-lg">
             + Add Member
           </button>
         </div>
@@ -136,33 +119,29 @@ export default function MembershipsPage() {
                 <select value={form.unit_id} onChange={e => setForm(f => ({ ...f, unit_id: e.target.value }))} required
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500">
                   <option value="">— select unit —</option>
-                  {units.map(u => <option key={u.id} value={u.id}>{u.unit_code}</option>)}
+                  {(units || []).map(u => <option key={u.id} value={u.id}>{u.unit_code}</option>)}
                 </select>
               </div>
             )}
             {error && <p className="text-red-500 text-sm">{error}</p>}
             <div className="flex gap-2">
-              <button type="submit" disabled={saving}
-                className="bg-brand-600 text-white text-sm px-4 py-2 rounded-lg disabled:opacity-50">
+              <button type="submit" disabled={saving} className="bg-brand-600 text-white text-sm px-4 py-2 rounded-lg disabled:opacity-50">
                 {saving ? 'Adding…' : 'Add'}
               </button>
-              <button type="button" onClick={() => { setShowForm(false); setError(''); }}
-                className="text-sm text-gray-500 px-4 py-2">Cancel</button>
+              <button type="button" onClick={() => { setShowForm(false); setError(''); }} className="text-sm text-gray-500 px-4 py-2">Cancel</button>
             </div>
           </form>
         </div>
       )}
 
-      {loading ? <p className="text-gray-400 text-sm">Loading…</p> : (
+      {isLoading ? <Skeleton /> : (
         <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-200">
-              <tr>
-                <Th>Member</Th><Th>Unit</Th><Th>Relationship</Th><Th>Role</Th><Th>Status</Th><Th>Actions</Th>
-              </tr>
+              <tr><Th>Member</Th><Th>Unit</Th><Th>Relationship</Th><Th>Role</Th><Th>Status</Th><Th>Actions</Th></tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {memberships.map(m => (
+              {(memberships || []).map(m => (
                 <tr key={m.id}>
                   <td className="px-4 py-3">
                     <p className="font-medium">{m.user.full_name || m.user.phone_number}</p>
@@ -182,11 +161,11 @@ export default function MembershipsPage() {
                       {m.approval_status === 'pending' && (
                         <>
                           <button disabled={updating === m.id} onClick={() => updateStatus(m.id, 'approved')}
-                            className="text-xs bg-brand-50 text-brand-700 hover:bg-brand-100 px-2 py-1 rounded-md font-medium">
+                            className="text-xs bg-brand-50 text-brand-700 hover:bg-brand-100 px-2 py-1 rounded-md font-medium disabled:opacity-50">
                             Approve
                           </button>
                           <button disabled={updating === m.id} onClick={() => updateStatus(m.id, 'rejected')}
-                            className="text-xs bg-red-50 text-red-600 hover:bg-red-100 px-2 py-1 rounded-md font-medium">
+                            className="text-xs bg-red-50 text-red-600 hover:bg-red-100 px-2 py-1 rounded-md font-medium disabled:opacity-50">
                             Reject
                           </button>
                         </>
@@ -201,7 +180,7 @@ export default function MembershipsPage() {
                   </td>
                 </tr>
               ))}
-              {memberships.length === 0 && (
+              {(memberships || []).length === 0 && (
                 <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400">No memberships</td></tr>
               )}
             </tbody>
@@ -226,5 +205,19 @@ function StatusBadge({ status }: { status: string }) {
     <span className={`text-xs font-medium px-2 py-1 rounded-full ${styles[status] ?? 'bg-gray-100 text-gray-600'}`}>
       {status}
     </span>
+  );
+}
+
+function Skeleton() {
+  return (
+    <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+      <div className="h-10 bg-gray-50 border-b border-gray-200" />
+      {[1,2,3,4].map(i => (
+        <div key={i} className="flex gap-4 px-4 py-3 border-b border-gray-100">
+          <div className="flex-[2] space-y-1"><div className="h-4 bg-gray-100 rounded animate-pulse" /><div className="h-3 bg-gray-100 rounded animate-pulse w-2/3" /></div>
+          {[1,2,3,4,5].map(j => <div key={j} className="flex-1 h-4 bg-gray-100 rounded animate-pulse" />)}
+        </div>
+      ))}
+    </div>
   );
 }

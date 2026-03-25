@@ -1,31 +1,17 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { api } from '@/lib/api';
+import { useFetch, mutate } from '@/lib/hooks';
 
-interface Community {
-  id: string;
-  name: string;
-  slug: string | null;
-  type: string | null;
-  member_count: number;
-}
+interface Community { id: string; name: string; slug: string | null; type: string | null; member_count: number }
 
 export default function CommunitiesPage() {
-  const [communities, setCommunities] = useState<Community[]>([]);
-  const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ name: '', slug: '', type: '' });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  function load() {
-    setLoading(true);
-    api.get<Community[]>('/admin/communities')
-      .then(setCommunities)
-      .finally(() => setLoading(false));
-  }
-
-  useEffect(() => { load(); }, []);
+  const { data: communities, isLoading } = useFetch<Community[]>('/admin/communities');
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -35,7 +21,7 @@ export default function CommunitiesPage() {
       await api.post('/admin/communities', form);
       setShowForm(false);
       setForm({ name: '', slug: '', type: '' });
-      load();
+      mutate('/admin/communities');
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed');
     } finally {
@@ -47,10 +33,7 @@ export default function CommunitiesPage() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-xl font-semibold">Communities</h2>
-        <button
-          onClick={() => setShowForm(true)}
-          className="bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium px-4 py-2 rounded-lg"
-        >
+        <button onClick={() => setShowForm(true)} className="bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium px-4 py-2 rounded-lg">
           + New Community
         </button>
       </div>
@@ -76,35 +59,27 @@ export default function CommunitiesPage() {
               <button type="submit" disabled={saving} className="bg-brand-600 text-white text-sm px-4 py-2 rounded-lg disabled:opacity-50">
                 {saving ? 'Saving…' : 'Create'}
               </button>
-              <button type="button" onClick={() => setShowForm(false)} className="text-sm text-gray-500 px-4 py-2">
-                Cancel
-              </button>
+              <button type="button" onClick={() => setShowForm(false)} className="text-sm text-gray-500 px-4 py-2">Cancel</button>
             </div>
           </form>
         </div>
       )}
 
-      {loading ? (
-        <p className="text-gray-400 text-sm">Loading…</p>
-      ) : (
+      {isLoading ? <Skeleton rows={3} cols={3} /> : (
         <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-200">
-              <tr>
-                <Th>Name</Th>
-                <Th>Type</Th>
-                <Th>Members</Th>
-              </tr>
+              <tr><Th>Name</Th><Th>Type</Th><Th>Members</Th></tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {communities.map(c => (
+              {(communities || []).map(c => (
                 <tr key={c.id}>
                   <td className="px-4 py-3 font-medium">{c.name}</td>
                   <td className="px-4 py-3 text-gray-500">{c.type || '—'}</td>
                   <td className="px-4 py-3 text-gray-500">{c.member_count ?? 0}</td>
                 </tr>
               ))}
-              {communities.length === 0 && (
+              {(communities || []).length === 0 && (
                 <tr><td colSpan={3} className="px-4 py-8 text-center text-gray-400">No communities yet</td></tr>
               )}
             </tbody>
@@ -123,12 +98,23 @@ function Input({ label, value, onChange, required }: { label: string; value: str
   return (
     <div>
       <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
-      <input
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        required={required}
-        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-      />
+      <input value={value} onChange={e => onChange(e.target.value)} required={required}
+        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+    </div>
+  );
+}
+
+function Skeleton({ rows, cols }: { rows: number; cols: number }) {
+  return (
+    <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+      <div className="h-10 bg-gray-50 border-b border-gray-200" />
+      {Array.from({ length: rows }).map((_, i) => (
+        <div key={i} className="flex gap-4 px-4 py-3 border-b border-gray-100">
+          {Array.from({ length: cols }).map((_, j) => (
+            <div key={j} className="h-4 bg-gray-100 rounded animate-pulse flex-1" />
+          ))}
+        </div>
+      ))}
     </div>
   );
 }
