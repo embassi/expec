@@ -26,13 +26,15 @@ export class AuthService {
   }
 
   async requestOtp(phoneNumber: string): Promise<{ message: string }> {
+    const isDev = this.config.get('NODE_ENV') !== 'production';
+
     // Invalidate previous unused OTPs for this number
     await this.prisma.otpVerification.updateMany({
       where: { phone_number: phoneNumber, used: false },
       data: { used: true },
     });
 
-    const otp = this.generateOtp();
+    const otp = isDev ? '123456' : this.generateOtp();
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
 
     await this.prisma.otpVerification.create({
@@ -43,9 +45,13 @@ export class AuthService {
       },
     });
 
-    await this.sendWhatsAppOtp(phoneNumber, otp);
+    if (isDev) {
+      this.logger.log(`[DEV] OTP for ${phoneNumber}: ${otp}`);
+    } else {
+      await this.sendWhatsAppOtp(phoneNumber, otp);
+    }
 
-    return { message: 'OTP sent via WhatsApp' };
+    return { message: isDev ? 'OTP sent (dev: use 123456)' : 'OTP sent via WhatsApp' };
   }
 
   async verifyOtp(
