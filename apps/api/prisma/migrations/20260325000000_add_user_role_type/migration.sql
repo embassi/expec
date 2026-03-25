@@ -1,0 +1,1 @@
+ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "role_type" TEXT NOT NULL DEFAULT 'resident';

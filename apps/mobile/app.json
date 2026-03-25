@@ -1,0 +1,34 @@
+{
+  "expo": {
+    "name": "Simsim",
+    "slug": "simsim-mobile",
+    "version": "1.0.0",
+    "scheme": "simsim",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#FACC15"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.simsim.mobile"
+    },
+    "android": {
+      "package": "com.simsim.mobile",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#FACC15"
+      }
+    },
+    "plugins": [
+      "expo-router",
+      "expo-font"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "API (NestJS)",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "api", "dev"],
+      "port": 3000
+    },
+    {
+      "name": "Dashboard (Next.js)",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "dashboard", "dev"],
+      "port": 3001
+    },
+    {
+      "name": "Mobile (Expo Web)",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@simsim/mobile", "exec", "expo", "start", "--web", "--port", "8081", "--clear"],
+      "port": 8081
+    }
+  ]
+}

@@ -1,0 +1,254 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ─── Users ────────────────────────────────────────────────────────────────────
+
+model User {
+  id                String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  phone_number      String   @unique
+  full_name         String?
+  profile_photo_url String?
+  status            String   @default("active")
+  role_type         String   @default("resident")
+  created_at        DateTime @default(now())
+  updated_at        DateTime @default(now()) @updatedAt
+
+  memberships      Membership[]
+  guest_passes     GuestPass[]
+  service_requests ServiceRequest[]
+
+  @@map("users")
+}
+
+// ─── OTP Verifications (custom WhatsApp OTP flow) ────────────────────────────
+
+model OtpVerification {
+  id           String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  phone_number String
+  otp_code     String
+  expires_at   DateTime
+  used         Boolean  @default(false)
+  created_at   DateTime @default(now())
+
+  @@index([phone_number])
+  @@map("otp_verifications")
+}
+
+// ─── Communities ──────────────────────────────────────────────────────────────
+
+model Community {
+  id         String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  name       String
+  slug       String?  @unique
+  type       String   @default("residential")
+  status     String   @default("active")
+  created_at DateTime @default(now())
+
+  units       Unit[]
+  memberships Membership[]
+  scanners    Scanner[]
+  access_logs AccessLog[]
+  guest_passes GuestPass[]
+  announcements Announcement[]
+  service_requests ServiceRequest[]
+  policies    CommunityPolicy[]
+
+  @@map("communities")
+}
+
+// ─── Units ────────────────────────────────────────────────────────────────────
+
+model Unit {
+  id           String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  community_id String   @db.Uuid
+  unit_code    String
+  unit_type    String?
+  floor        String?
+  building     String?
+  created_at   DateTime @default(now())
+
+  community   Community    @relation(fields: [community_id], references: [id], onDelete: Cascade)
+  memberships Membership[]
+  access_logs AccessLog[]
+
+  @@unique([community_id, unit_code])
+  @@map("units")
+}
+
+// ─── Memberships ──────────────────────────────────────────────────────────────
+
+model Membership {
+  id                   String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  user_id              String    @db.Uuid
+  community_id         String    @db.Uuid
+  unit_id              String?   @db.Uuid
+  relationship_type    String?
+  role_type            String?
+  approval_status      String    @default("pending")
+  invited_by_user_id   String?   @db.Uuid
+  created_by_manager_id String?  @db.Uuid
+  start_date           DateTime?
+  end_date             DateTime?
+  created_at           DateTime  @default(now())
+
+  user      User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  community Community @relation(fields: [community_id], references: [id], onDelete: Cascade)
+  unit      Unit?     @relation(fields: [unit_id], references: [id])
+
+  guest_passes GuestPass[]
+
+  @@index([user_id])
+  @@index([community_id])
+  @@map("memberships")
+}
+
+// ─── Scanners ─────────────────────────────────────────────────────────────────
+
+model Scanner {
+  id             String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  community_id   String   @db.Uuid
+  scanner_name   String?
+  scanner_code   String   @unique
+  location_label String?
+  device_key     String
+  is_active      Boolean  @default(true)
+  created_at     DateTime @default(now())
+
+  community   Community   @relation(fields: [community_id], references: [id], onDelete: Cascade)
+  access_logs AccessLog[]
+
+  @@map("scanners")
+}
+
+// ─── Access Logs ──────────────────────────────────────────────────────────────
+
+model AccessLog {
+  id             String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  community_id   String?  @db.Uuid
+  scanner_id     String?  @db.Uuid
+  scanner_code   String?
+  scan_type      String?
+  user_id        String?  @db.Uuid
+  membership_id  String?  @db.Uuid
+  guest_pass_id  String?  @db.Uuid
+  resident_name  String?
+  resident_phone String?
+  unit_id        String?  @db.Uuid
+  unit_code      String?
+  result         String
+  denial_reason  String?
+  scanned_at     DateTime @default(now())
+
+  community Community? @relation(fields: [community_id], references: [id])
+  scanner   Scanner?   @relation(fields: [scanner_id], references: [id])
+  unit      Unit?      @relation(fields: [unit_id], references: [id])
+
+  @@index([scanner_id])
+  @@index([user_id])
+  @@map("access_logs")
+}
+
+// ─── Guest Passes ─────────────────────────────────────────────────────────────
+
+model GuestPass {
+  id                 String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  community_id       String   @db.Uuid
+  host_user_id       String   @db.Uuid
+  host_membership_id String   @db.Uuid
+  guest_name         String
+  guest_phone        String
+  pass_type          String
+  status             String   @default("active")
+  valid_from         DateTime
+  valid_until        DateTime
+  usage_limit        Int
+  usage_count        Int      @default(0)
+  qr_token_version   Int      @default(1)
+  created_at         DateTime @default(now())
+
+  community       Community  @relation(fields: [community_id], references: [id])
+  host_user       User       @relation(fields: [host_user_id], references: [id])
+  host_membership Membership @relation(fields: [host_membership_id], references: [id])
+
+  @@index([host_user_id])
+  @@map("guest_passes")
+}
+
+// ─── Announcements ────────────────────────────────────────────────────────────
+
+model Announcement {
+  id           String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  community_id String    @db.Uuid
+  title        String?
+  body         String?
+  image_url    String?
+  published_by String?   @db.Uuid
+  published_at DateTime?
+  status       String    @default("draft")
+
+  community Community @relation(fields: [community_id], references: [id])
+
+  @@map("announcements")
+}
+
+// ─── Service Requests ─────────────────────────────────────────────────────────
+
+model ServiceRequest {
+  id            String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  community_id  String   @db.Uuid
+  user_id       String   @db.Uuid
+  membership_id String?  @db.Uuid
+  category      String?
+  subject       String?
+  description   String?
+  status        String   @default("open")
+  assigned_to   String?  @db.Uuid
+  created_at    DateTime @default(now())
+
+  community Community @relation(fields: [community_id], references: [id])
+  user      User      @relation(fields: [user_id], references: [id])
+
+  @@map("service_requests")
+}
+
+// ─── Community Policies ───────────────────────────────────────────────────────
+
+model CommunityPolicy {
+  id           String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  community_id String   @db.Uuid
+
+  owner_added_members_require_approval Boolean @default(true)
+  max_family_members_per_unit          Int     @default(6)
+  max_staff_members_per_unit           Int     @default(3)
+  allow_tenants                        Boolean @default(true)
+  tenant_requires_approval             Boolean @default(true)
+
+  max_active_guest_passes_per_host Int @default(5)
+  max_guest_passes_per_day         Int @default(10)
+
+  guest_pass_guest_duration_hours    Int @default(24)
+  guest_pass_guest_usage_limit       Int @default(5)
+  guest_pass_delivery_duration_hours Int @default(6)
+  guest_pass_delivery_usage_limit    Int @default(1)
+  guest_pass_service_duration_hours  Int @default(6)
+  guest_pass_service_usage_limit     Int @default(1)
+
+  family_can_generate_guest_passes  Boolean @default(true)
+  tenant_can_generate_guest_passes  Boolean @default(true)
+  staff_can_generate_guest_passes   Boolean @default(false)
+
+  created_at DateTime @default(now())
+  updated_at DateTime @default(now()) @updatedAt
+
+  community Community @relation(fields: [community_id], references: [id])
+
+  @@unique([community_id])
+  @@map("community_policies")
+}
