@@ -1,3 +1,6 @@
 {
+  "installCommand": "pnpm -C ../.. install --no-frozen-lockfile",
+  "buildCommand": "pnpm -C ../.. --filter @simsim/dashboard build",
+  "outputDirectory": ".next",
   "framework": "nextjs"
 }

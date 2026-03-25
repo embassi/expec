@@ -22,10 +22,10 @@ import { CreateScannerDto } from './dto/create-scanner.dto';
 import { CreateAnnouncementDto } from './dto/create-announcement.dto';
 import { UpdatePolicyDto } from './dto/update-policy.dto';
 import { User } from '@prisma/client';
-import { IsPhoneNumber } from 'class-validator';
+import { Matches } from 'class-validator';
 
 class AddManagerDto {
-  @IsPhoneNumber()
+  @Matches(/^\+[1-9]\d{6,14}$/, { message: 'phone_number must be in international format, e.g. +201001234567' })
   phone_number: string;
 }
 

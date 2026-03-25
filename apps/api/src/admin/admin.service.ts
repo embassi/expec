@@ -1,4 +1,5 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateCommunityDto } from './dto/create-community.dto';
 import { CreateUnitDto } from './dto/create-unit.dto';
@@ -9,10 +10,22 @@ import { CreateAnnouncementDto } from './dto/create-announcement.dto';
 import { UpdatePolicyDto } from './dto/update-policy.dto';
 import { ApprovalStatus, RelationshipType, RoleType, AnnouncementStatus } from '@simsim/types';
 import { randomBytes } from 'crypto';
+import { Twilio } from 'twilio';
 
 @Injectable()
 export class AdminService {
-  constructor(private prisma: PrismaService) {}
+  private readonly logger = new Logger(AdminService.name);
+  private twilioClient: Twilio;
+
+  constructor(
+    private prisma: PrismaService,
+    private config: ConfigService,
+  ) {
+    this.twilioClient = new Twilio(
+      this.config.get('TWILIO_ACCOUNT_SID'),
+      this.config.get('TWILIO_AUTH_TOKEN'),
+    );
+  }
 
   // ─── Communities ───────────────────────────────────────────────────────────
 
@@ -73,6 +86,9 @@ export class AdminService {
     });
     if (!unit) throw new NotFoundException('Unit not found in this community');
 
+    const community = await this.prisma.community.findUnique({ where: { id: communityId } });
+    if (!community) throw new NotFoundException('Community not found');
+
     const user = await this.prisma.user.upsert({
       where: { phone_number: dto.phone_number },
       update: {},
@@ -91,7 +107,7 @@ export class AdminService {
     });
     if (existing) throw new ConflictException('User is already an owner of this unit');
 
-    return this.prisma.membership.create({
+    const membership = await this.prisma.membership.create({
       data: {
         user_id: user.id,
         community_id: communityId,
@@ -102,6 +118,13 @@ export class AdminService {
         created_by_manager_id: managerId,
       },
     });
+
+    // Send WhatsApp welcome message (fire-and-forget)
+    this.sendWelcomeMessage(dto.phone_number, community.name).catch(err =>
+      this.logger.warn(`Failed to send welcome WhatsApp to ${dto.phone_number}: ${err.message}`),
+    );
+
+    return membership;
   }
 
   // ─── Memberships ───────────────────────────────────────────────────────────
@@ -277,7 +300,7 @@ export class AdminService {
     });
     if (existing) throw new ConflictException('User is already a manager');
 
-    return this.prisma.membership.create({
+    const membership = await this.prisma.membership.create({
       data: {
         user_id: user.id,
         community_id: communityId,
@@ -285,5 +308,38 @@ export class AdminService {
         approval_status: ApprovalStatus.Approved,
       },
     });
+
+    // Send WhatsApp welcome message (fire-and-forget)
+    this.sendWelcomeMessage(phoneNumber, community.name).catch(err =>
+      this.logger.warn(`Failed to send welcome WhatsApp to ${phoneNumber}: ${err.message}`),
+    );
+
+    return membership;
+  }
+
+  // ─── WhatsApp Welcome ──────────────────────────────────────────────────────
+
+  private async sendWelcomeMessage(phoneNumber: string, communityName: string): Promise<void> {
+    const from = this.config.get<string>('TWILIO_WHATSAPP_FROM');
+    const templateSid = this.config.get<string>('TWILIO_WELCOME_TEMPLATE_SID');
+
+    if (templateSid) {
+      // Use approved template (recommended for cold numbers)
+      await this.twilioClient.messages.create({
+        from,
+        to: `whatsapp:${phoneNumber}`,
+        contentSid: templateSid,
+        contentVariables: JSON.stringify({ 1: communityName }),
+      });
+    } else {
+      // Freeform fallback — works only if the number has messaged this WhatsApp number before
+      await this.twilioClient.messages.create({
+        from,
+        to: `whatsapp:${phoneNumber}`,
+        body: `You are now a member of "${communityName}". Download Simsim app and login with your phone number to access your community.`,
+      });
+    }
+
+    this.logger.log(`Welcome WhatsApp sent to ${phoneNumber} for community "${communityName}"`);
   }
 }
