@@ -23,20 +23,18 @@ const SUPER_ADMIN_NAV = [
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const [ready, setReady] = useState(false);
   const [user, setUser] = useState<SessionUser | null>(null);
 
   useEffect(() => {
+    // Middleware handles unauthenticated redirects; here we just load the user object
     const session = getSession();
-    if (!session) { router.replace('/login'); return; }
-    setUser(session.user);
-    setReady(true);
-  }, [router]);
-
-  if (!ready) return null;
+    if (session) setUser(session.user);
+  }, []);
 
   const isSuperAdmin = user?.role_type === 'super_admin';
-  const nav = isSuperAdmin ? [...BASE_NAV, ...SUPER_ADMIN_NAV] : BASE_NAV;
+  const nav = isSuperAdmin
+    ? [BASE_NAV[0], ...SUPER_ADMIN_NAV, ...BASE_NAV.slice(1)]
+    : BASE_NAV;
 
   function logout() {
     clearSession();
@@ -56,6 +54,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <Link
               key={item.href}
               href={item.href}
+              prefetch={true}
               className={`block px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
                 pathname === item.href
                   ? 'bg-brand-50 text-brand-700'

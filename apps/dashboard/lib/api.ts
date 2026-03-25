@@ -2,6 +2,9 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
 
 function getToken(): string | null {
   if (typeof window === 'undefined') return null;
+  // Try cookie first (set by saveSession for middleware compatibility)
+  const cookieMatch = document.cookie.match(/(^| )simsim_token=([^;]+)/);
+  if (cookieMatch) return decodeURIComponent(cookieMatch[2]);
   return localStorage.getItem('access_token');
 }
 

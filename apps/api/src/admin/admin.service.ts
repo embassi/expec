@@ -209,11 +209,23 @@ export class AdminService {
     });
   }
 
-  async toggleScanner(scannerId: string, isActive: boolean) {
+  async toggleScanner(scannerId: string) {
+    const scanner = await this.prisma.scanner.findUniqueOrThrow({ where: { id: scannerId } });
     return this.prisma.scanner.update({
       where: { id: scannerId },
-      data: { is_active: isActive },
+      data: { is_active: !scanner.is_active },
     });
+  }
+
+  // ─── Overview ──────────────────────────────────────────────────────────────
+
+  async getOverview() {
+    const [total_communities, total_members, pending_memberships] = await Promise.all([
+      this.prisma.community.count(),
+      this.prisma.membership.count({ where: { approval_status: 'approved' } }),
+      this.prisma.membership.count({ where: { approval_status: 'pending' } }),
+    ]);
+    return { total_communities, total_members, pending_memberships };
   }
 
   // ─── Announcements ─────────────────────────────────────────────────────────

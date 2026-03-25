@@ -10,6 +10,7 @@ import {
   UseGuards,
   ParseIntPipe,
   DefaultValuePipe,
+  Header,
 } from '@nestjs/common';
 import { AdminService } from './admin.service';
 import { AdminGuard } from '../common/guards/admin.guard';
@@ -36,6 +37,13 @@ class AddManagerDto {
 export class AdminController {
   constructor(private adminService: AdminService) {}
 
+  // ─── Overview ────────────────────────────────────────────────────────────
+
+  @Get('overview')
+  getOverview() {
+    return this.adminService.getOverview();
+  }
+
   // ─── Communities ─────────────────────────────────────────────────────────
 
   @Post('communities')
@@ -44,6 +52,7 @@ export class AdminController {
   }
 
   @Get('communities')
+  @Header('Cache-Control', 'private, max-age=10, stale-while-revalidate=30')
   listCommunities() {
     return this.adminService.listCommunities();
   }
@@ -56,6 +65,7 @@ export class AdminController {
   }
 
   @Get('communities/:communityId/units')
+  @Header('Cache-Control', 'private, max-age=10, stale-while-revalidate=30')
   listUnits(@Param('communityId') communityId: string) {
     return this.adminService.listUnits(communityId);
   }
@@ -97,8 +107,8 @@ export class AdminController {
   }
 
   @Patch('scanners/:id/toggle')
-  toggleScanner(@Param('id') id: string, @Body('is_active') isActive: boolean) {
-    return this.adminService.toggleScanner(id, isActive);
+  toggleScanner(@Param('id') id: string) {
+    return this.adminService.toggleScanner(id);
   }
 
   // ─── Announcements ───────────────────────────────────────────────────────
@@ -127,6 +137,7 @@ export class AdminController {
   // ─── Policies ────────────────────────────────────────────────────────────
 
   @Get('communities/:communityId/policy')
+  @Header('Cache-Control', 'private, max-age=10, stale-while-revalidate=30')
   getPolicy(@Param('communityId') communityId: string) {
     return this.adminService.getPolicy(communityId);
   }

@@ -5,7 +5,7 @@ export function useFetch<T>(path: string | null) {
   const { data, error, isLoading } = useSWR<T>(
     path,
     (p: string) => api.get<T>(p),
-    { revalidateOnFocus: false }
+    {}
   );
   return { data, error, isLoading };
 }

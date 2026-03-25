@@ -43,9 +43,19 @@ export default function ScannersPage() {
     }
   }
 
-  async function toggle(id: string, isActive: boolean) {
-    await api.patch(`/admin/scanners/${id}/toggle`, {});
-    mutate(`/admin/communities/${communityId}/scanners`);
+  async function toggle(id: string) {
+    const key = `/admin/communities/${communityId}/scanners`;
+    // Optimistically flip is_active so UI responds instantly
+    mutate(key, (current: Scanner[] | undefined) =>
+      current?.map(s => s.id === id ? { ...s, is_active: !s.is_active } : s),
+      { revalidate: false }
+    );
+    try {
+      await api.patch(`/admin/scanners/${id}/toggle`, {});
+      mutate(key);
+    } catch {
+      mutate(key); // rollback by revalidating from server
+    }
   }
 
   async function assignScanner(id: string) {
@@ -166,7 +176,7 @@ export default function ScannersPage() {
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    <button onClick={() => toggle(s.id, s.is_active)} className="text-xs text-brand-600 hover:underline">
+                    <button onClick={() => toggle(s.id)} className="text-xs text-brand-600 hover:underline">
                       {s.is_active ? 'Disable' : 'Enable'}
                     </button>
                   </td>

@@ -36,10 +36,18 @@ export default function MembershipsPage() {
   );
 
   async function updateStatus(id: string, status: string) {
+    const key = `/admin/communities/${communityId}/memberships`;
     setUpdating(id);
+    // Optimistically flip the status so the UI responds instantly
+    mutate(key, (current: Membership[] | undefined) =>
+      current?.map(m => m.id === id ? { ...m, approval_status: status } : m),
+      { revalidate: false }
+    );
     try {
       await api.patch(`/admin/memberships/${id}`, { approval_status: status });
-      mutate(`/admin/communities/${communityId}/memberships`);
+      mutate(key);
+    } catch {
+      mutate(key); // rollback by revalidating from server
     } finally {
       setUpdating('');
     }

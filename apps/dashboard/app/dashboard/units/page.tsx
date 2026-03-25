@@ -1,43 +1,31 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { api } from '@/lib/api';
+import { useFetch, mutate } from '@/lib/hooks';
 
 interface Community { id: string; name: string }
 interface Unit { id: string; unit_code: string; floor: string | null; building: string | null }
 
 export default function UnitsPage() {
-  const [communities, setCommunities] = useState<Community[]>([]);
+  const { data: communities } = useFetch<Community[]>('/admin/communities');
   const [selected, setSelected] = useState('');
-  const [units, setUnits] = useState<Unit[]>([]);
-  const [loading, setLoading] = useState(false);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ community_id: '', unit_code: '', floor: '', building: '' });
+  const [form, setForm] = useState({ unit_code: '', floor: '', building: '' });
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    api.get<Community[]>('/admin/communities').then(cs => {
-      setCommunities(cs);
-      if (cs.length > 0) { setSelected(cs[0].id); setForm(f => ({ ...f, community_id: cs[0].id })); }
-    });
-  }, []);
-
-  useEffect(() => {
-    if (!selected) return;
-    setLoading(true);
-    api.get<Unit[]>(`/admin/communities/${selected}/units`)
-      .then(setUnits)
-      .finally(() => setLoading(false));
-  }, [selected]);
+  const communityId = selected || communities?.[0]?.id || null;
+  const { data: units, isLoading } = useFetch<Unit[]>(
+    communityId ? `/admin/communities/${communityId}/units` : null
+  );
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
     try {
-      await api.post('/admin/units', { ...form, community_id: selected });
+      await api.post('/admin/units', { ...form, community_id: communityId });
       setShowForm(false);
-      setForm(f => ({ ...f, unit_code: '', floor: '', building: '' }));
-      setLoading(true);
-      api.get<Unit[]>(`/admin/communities/${selected}/units`).then(setUnits).finally(() => setLoading(false));
+      setForm({ unit_code: '', floor: '', building: '' });
+      mutate(`/admin/communities/${communityId}/units`);
     } finally {
       setSaving(false);
     }
@@ -49,11 +37,11 @@ export default function UnitsPage() {
         <h2 className="text-xl font-semibold">Units</h2>
         <div className="flex gap-3">
           <select
-            value={selected}
+            value={selected || communityId || ''}
             onChange={e => setSelected(e.target.value)}
             className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
           >
-            {communities.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            {communities?.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
           <button onClick={() => setShowForm(true)} className="bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium px-4 py-2 rounded-lg">
             + Add Unit
@@ -86,7 +74,7 @@ export default function UnitsPage() {
         </div>
       )}
 
-      {loading ? <p className="text-gray-400 text-sm">Loading…</p> : (
+      {isLoading ? <p className="text-gray-400 text-sm">Loading…</p> : (
         <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-200">
@@ -95,14 +83,14 @@ export default function UnitsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {units.map(u => (
+              {units?.map(u => (
                 <tr key={u.id}>
                   <td className="px-4 py-3 font-medium">{u.unit_code}</td>
                   <td className="px-4 py-3 text-gray-500">{u.floor || '—'}</td>
                   <td className="px-4 py-3 text-gray-500">{u.building || '—'}</td>
                 </tr>
               ))}
-              {units.length === 0 && <tr><td colSpan={3} className="px-4 py-8 text-center text-gray-400">No units yet</td></tr>}
+              {!units?.length && <tr><td colSpan={3} className="px-4 py-8 text-center text-gray-400">No units yet</td></tr>}
             </tbody>
           </table>
         </div>

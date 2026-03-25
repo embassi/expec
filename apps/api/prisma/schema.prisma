@@ -107,6 +107,7 @@ model Membership {
 
   @@index([user_id])
   @@index([community_id])
+  @@index([community_id, approval_status])
   @@map("memberships")
 }
 
@@ -155,6 +156,8 @@ model AccessLog {
 
   @@index([scanner_id])
   @@index([user_id])
+  @@index([community_id])
+  @@index([community_id, scanned_at(sort: Desc)])
   @@map("access_logs")
 }
 
@@ -218,6 +221,7 @@ model ServiceRequest {
   community Community @relation(fields: [community_id], references: [id])
   user      User      @relation(fields: [user_id], references: [id])
 
+  @@index([community_id])
   @@map("service_requests")
 }
 

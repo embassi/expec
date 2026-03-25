@@ -1,6 +1,7 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { api } from '@/lib/api';
+import { useFetch, mutate } from '@/lib/hooks';
 
 interface Community { id: string; name: string }
 interface ServiceRequest {
@@ -15,30 +16,20 @@ interface ServiceRequest {
 const STATUSES = ['open', 'in_progress', 'resolved', 'closed'];
 
 export default function ServiceRequestsPage() {
-  const [communities, setCommunities] = useState<Community[]>([]);
+  const { data: communities } = useFetch<Community[]>('/admin/communities');
   const [selected, setSelected] = useState('');
-  const [requests, setRequests] = useState<ServiceRequest[]>([]);
-  const [loading, setLoading] = useState(false);
   const [updating, setUpdating] = useState('');
 
-  useEffect(() => {
-    api.get<Community[]>('/admin/communities').then(cs => {
-      setCommunities(cs);
-      if (cs.length > 0) setSelected(cs[0].id);
-    });
-  }, []);
-
-  useEffect(() => {
-    if (!selected) return;
-    setLoading(true);
-    api.get<ServiceRequest[]>(`/admin/communities/${selected}/service-requests`).then(setRequests).finally(() => setLoading(false));
-  }, [selected]);
+  const communityId = selected || communities?.[0]?.id || null;
+  const { data: requests, isLoading } = useFetch<ServiceRequest[]>(
+    communityId ? `/admin/communities/${communityId}/service-requests` : null
+  );
 
   async function updateStatus(id: string, status: string) {
     setUpdating(id);
     try {
       await api.patch(`/admin/service-requests/${id}/status`, { status });
-      setRequests(rs => rs.map(r => r.id === id ? { ...r, status } : r));
+      mutate(`/admin/communities/${communityId}/service-requests`);
     } finally {
       setUpdating('');
     }
@@ -48,15 +39,15 @@ export default function ServiceRequestsPage() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-xl font-semibold">Service Requests</h2>
-        <select value={selected} onChange={e => setSelected(e.target.value)}
+        <select value={selected || communityId || ''} onChange={e => setSelected(e.target.value)}
           className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500">
-          {communities.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          {communities?.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
       </div>
 
-      {loading ? <p className="text-gray-400 text-sm">Loading…</p> : (
+      {isLoading ? <p className="text-gray-400 text-sm">Loading…</p> : (
         <div className="space-y-3">
-          {requests.map(r => (
+          {requests?.map(r => (
             <div key={r.id} className="bg-white border border-gray-200 rounded-xl p-5">
               <div className="flex items-start justify-between gap-4">
                 <div className="flex-1">
@@ -79,7 +70,7 @@ export default function ServiceRequestsPage() {
               <p className="text-xs text-gray-400 mt-3">{new Date(r.created_at).toLocaleString()}</p>
             </div>
           ))}
-          {requests.length === 0 && <p className="text-center text-gray-400 text-sm py-8">No service requests</p>}
+          {!requests?.length && <p className="text-center text-gray-400 text-sm py-8">No service requests</p>}
         </div>
       )}
     </div>

@@ -11,6 +11,8 @@ export interface SessionUser {
 export function saveSession(token: string, user: SessionUser) {
   localStorage.setItem('access_token', token);
   localStorage.setItem('user', JSON.stringify(user));
+  // Also write to cookie so Next.js middleware can read it for auth routing
+  document.cookie = `simsim_token=${encodeURIComponent(token)}; path=/; SameSite=Strict; max-age=2592000`;
 }
 
 export function getSession(): { token: string; user: SessionUser } | null {
@@ -24,6 +26,7 @@ export function getSession(): { token: string; user: SessionUser } | null {
 export function clearSession() {
   localStorage.removeItem('access_token');
   localStorage.removeItem('user');
+  document.cookie = 'simsim_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
 }
 
 export function isSuperAdmin(): boolean {
