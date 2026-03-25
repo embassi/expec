@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
-import { saveSession } from '@/lib/auth';
+import { saveSession, SessionUser } from '@/lib/auth';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -31,7 +31,7 @@ export default function LoginPage() {
     setError('');
     setLoading(true);
     try {
-      const res = await api.post<{ access_token: string; user: unknown }>(
+      const res = await api.post<{ access_token: string; user: SessionUser }>(
         '/auth/verify-otp',
         { phone_number: phone, otp }
       );
