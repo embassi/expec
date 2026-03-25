@@ -13,6 +13,8 @@ import {
 } from '@nestjs/common';
 import { AdminService } from './admin.service';
 import { AdminGuard } from '../common/guards/admin.guard';
+import { SuperAdminGuard } from '../common/guards/super-admin.guard';
+import { CommunityAdminGuard } from '../common/guards/community-admin.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { CreateCommunityDto } from './dto/create-community.dto';
 import { CreateUnitDto } from './dto/create-unit.dto';
@@ -157,5 +159,38 @@ export class AdminController {
     @Body() dto: AddManagerDto,
   ) {
     return this.adminService.addManager(communityId, dto.phone_number);
+  }
+
+  // ─── Users (super admin only) ─────────────────────────────────────────────
+
+  @UseGuards(SuperAdminGuard)
+  @Get('users')
+  listUsers() {
+    return this.adminService.listUsers();
+  }
+
+  @UseGuards(SuperAdminGuard)
+  @Patch('users/:id/role')
+  updateUserRole(@Param('id') id: string, @Body('role_type') roleType: string) {
+    return this.adminService.updateUserRole(id, roleType);
+  }
+
+  // ─── Resend Invite ────────────────────────────────────────────────────────
+
+  @UseGuards(CommunityAdminGuard)
+  @Post('memberships/:id/resend-invite')
+  resendInvite(@Param('id') id: string) {
+    return this.adminService.resendInvite(id);
+  }
+
+  // ─── Assign Scanner ───────────────────────────────────────────────────────
+
+  @UseGuards(CommunityAdminGuard)
+  @Patch('scanners/:id/assign')
+  assignScanner(
+    @Param('id') id: string,
+    @Body('phone_number') phoneNumber: string | null,
+  ) {
+    return this.adminService.assignScanner(id, phoneNumber ?? null);
   }
 }

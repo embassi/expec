@@ -22,5 +22,17 @@ export async function getCredentials(): Promise<ScannerCredentials | null> {
 }
 
 export async function clearCredentials(): Promise<void> {
-  await AsyncStorage.multiRemove([STORAGE_KEYS.SCANNER_CODE, STORAGE_KEYS.DEVICE_KEY]);
+  await AsyncStorage.multiRemove([STORAGE_KEYS.SCANNER_CODE, STORAGE_KEYS.DEVICE_KEY, STORAGE_KEYS.USER_TOKEN]);
+}
+
+export async function saveUserToken(token: string): Promise<void> {
+  await AsyncStorage.setItem(STORAGE_KEYS.USER_TOKEN, token);
+}
+
+export async function getUserToken(): Promise<string | null> {
+  return AsyncStorage.getItem(STORAGE_KEYS.USER_TOKEN);
+}
+
+export async function clearUserToken(): Promise<void> {
+  await AsyncStorage.removeItem(STORAGE_KEYS.USER_TOKEN);
 }

@@ -3,7 +3,15 @@ import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 
 interface Community { id: string; name: string }
-interface Scanner { id: string; scanner_name: string; scanner_code: string; device_key: string; is_active: boolean; location_label: string | null }
+interface Scanner {
+  id: string;
+  scanner_name: string;
+  scanner_code: string;
+  device_key: string;
+  is_active: boolean;
+  location_label: string | null;
+  assigned_user?: { full_name: string | null; phone_number: string } | null;
+}
 
 export default function ScannersPage() {
   const [communities, setCommunities] = useState<Community[]>([]);
@@ -14,6 +22,8 @@ export default function ScannersPage() {
   const [form, setForm] = useState({ scanner_name: '', scanner_code: '', location_label: '' });
   const [saving, setSaving] = useState(false);
   const [newScanner, setNewScanner] = useState<Scanner | null>(null);
+  const [assigning, setAssigning] = useState<Record<string, boolean>>({});
+  const [assignPhone, setAssignPhone] = useState<Record<string, string>>({});
 
   useEffect(() => {
     api.get<Community[]>('/admin/communities').then(cs => {
@@ -45,6 +55,19 @@ export default function ScannersPage() {
   async function toggle(id: string) {
     await api.patch(`/admin/scanners/${id}/toggle`, {});
     setScanners(ss => ss.map(s => s.id === id ? { ...s, is_active: !s.is_active } : s));
+  }
+
+  async function assignScanner(id: string) {
+    const phone = (assignPhone[id] || '').trim();
+    if (!phone) return;
+    setAssigning(a => ({ ...a, [id]: true }));
+    try {
+      const updated = await api.patch<Scanner>(`/admin/scanners/${id}/assign`, { phone_number: phone });
+      setScanners(ss => ss.map(s => s.id === id ? { ...s, assigned_user: updated.assigned_user } : s));
+      setAssignPhone(p => ({ ...p, [id]: '' }));
+    } finally {
+      setAssigning(a => ({ ...a, [id]: false }));
+    }
   }
 
   return (
@@ -103,7 +126,7 @@ export default function ScannersPage() {
         <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-200">
-              <tr><Th>Name</Th><Th>Location</Th><Th>Code</Th><Th>Status</Th><Th>Actions</Th></tr>
+              <tr><Th>Name</Th><Th>Location</Th><Th>Code</Th><Th>Assigned User</Th><Th>Status</Th><Th>Actions</Th></tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {scanners.map(s => (
@@ -111,6 +134,31 @@ export default function ScannersPage() {
                   <td className="px-4 py-3 font-medium">{s.scanner_name}</td>
                   <td className="px-4 py-3 text-gray-500">{s.location_label || '—'}</td>
                   <td className="px-4 py-3 font-mono text-xs text-gray-500">{s.scanner_code}</td>
+                  <td className="px-4 py-3">
+                    {s.assigned_user ? (
+                      <div className="mb-2">
+                        <p className="font-medium text-gray-800">{s.assigned_user.full_name || s.assigned_user.phone_number}</p>
+                        {s.assigned_user.full_name && <p className="text-xs text-gray-400">{s.assigned_user.phone_number}</p>}
+                      </div>
+                    ) : (
+                      <p className="text-gray-400 text-xs mb-2">Unassigned</p>
+                    )}
+                    <div className="flex gap-1">
+                      <input
+                        value={assignPhone[s.id] || ''}
+                        onChange={e => setAssignPhone(p => ({ ...p, [s.id]: e.target.value }))}
+                        placeholder="+201234567890"
+                        className="border border-gray-300 rounded px-2 py-1 text-xs w-36 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                      />
+                      <button
+                        onClick={() => assignScanner(s.id)}
+                        disabled={assigning[s.id] || !(assignPhone[s.id] || '').trim()}
+                        className="text-xs bg-brand-50 text-brand-700 hover:bg-brand-100 px-2 py-1 rounded font-medium disabled:opacity-50"
+                      >
+                        {assigning[s.id] ? '…' : 'Assign'}
+                      </button>
+                    </div>
+                  </td>
                   <td className="px-4 py-3">
                     <span className={`text-xs font-medium px-2 py-1 rounded-full ${s.is_active ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
                       {s.is_active ? 'Active' : 'Inactive'}
@@ -123,7 +171,7 @@ export default function ScannersPage() {
                   </td>
                 </tr>
               ))}
-              {scanners.length === 0 && <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-400">No scanners yet</td></tr>}
+              {scanners.length === 0 && <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400">No scanners yet</td></tr>}
             </tbody>
           </table>
         </div>

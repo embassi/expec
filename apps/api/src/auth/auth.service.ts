@@ -72,11 +72,11 @@ export class AuthService {
       data: { used: true },
     });
 
-    // Upsert user
+    // Upsert user — if invited, activate on first login
     const user = await this.prisma.user.upsert({
       where: { phone_number: phoneNumber },
-      update: {},
-      create: { phone_number: phoneNumber },
+      update: { status: 'active' },
+      create: { phone_number: phoneNumber, role_type: 'user', status: 'active' },
     });
 
     const accessToken = this.jwtService.sign({ sub: user.id });
@@ -89,6 +89,7 @@ export class AuthService {
         full_name: user.full_name,
         profile_photo_url: user.profile_photo_url,
         status: user.status,
+        role_type: user.role_type,
       },
     };
   }

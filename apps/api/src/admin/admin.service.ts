@@ -92,7 +92,7 @@ export class AdminService {
     const user = await this.prisma.user.upsert({
       where: { phone_number: dto.phone_number },
       update: {},
-      create: { phone_number: dto.phone_number },
+      create: { phone_number: dto.phone_number, role_type: 'user', status: 'invited' },
     });
 
     // Check existing owner membership
@@ -136,7 +136,7 @@ export class AdminService {
         ...(status ? { approval_status: status } : {}),
       },
       include: {
-        user: { select: { full_name: true, phone_number: true, profile_photo_url: true } },
+        user: { select: { full_name: true, phone_number: true, profile_photo_url: true, status: true } },
         unit: { select: { unit_code: true } },
       },
       orderBy: { created_at: 'desc' },
@@ -185,8 +185,27 @@ export class AdminService {
         location_label: true,
         is_active: true,
         created_at: true,
+        assigned_user_id: true,
+        assigned_user: { select: { full_name: true, phone_number: true } },
         // device_key intentionally excluded from list
       },
+    });
+  }
+
+  async assignScanner(scannerId: string, phoneNumber: string | null) {
+    if (phoneNumber === null) {
+      return this.prisma.scanner.update({
+        where: { id: scannerId },
+        data: { assigned_user_id: null },
+      });
+    }
+
+    const user = await this.prisma.user.findUnique({ where: { phone_number: phoneNumber } });
+    if (!user) throw new NotFoundException('User not found with this phone number');
+
+    return this.prisma.scanner.update({
+      where: { id: scannerId },
+      data: { assigned_user_id: user.id },
     });
   }
 
@@ -292,11 +311,15 @@ export class AdminService {
     const user = await this.prisma.user.upsert({
       where: { phone_number: phoneNumber },
       update: {},
-      create: { phone_number: phoneNumber },
+      create: { phone_number: phoneNumber, role_type: 'user', status: 'invited' },
     });
 
     const existing = await this.prisma.membership.findFirst({
-      where: { user_id: user.id, community_id: communityId, role_type: RoleType.Manager },
+      where: {
+        user_id: user.id,
+        community_id: communityId,
+        role_type: { in: [RoleType.Manager, RoleType.CommunityAdmin, RoleType.CommunityManager] },
+      },
     });
     if (existing) throw new ConflictException('User is already a manager');
 
@@ -304,7 +327,7 @@ export class AdminService {
       data: {
         user_id: user.id,
         community_id: communityId,
-        role_type: RoleType.Manager,
+        role_type: RoleType.CommunityManager,
         approval_status: ApprovalStatus.Approved,
       },
     });
@@ -315,6 +338,51 @@ export class AdminService {
     );
 
     return membership;
+  }
+
+  // ─── Users (super admin) ───────────────────────────────────────────────────
+
+  async listUsers() {
+    return this.prisma.user.findMany({
+      orderBy: { created_at: 'desc' },
+      select: {
+        id: true,
+        phone_number: true,
+        full_name: true,
+        status: true,
+        role_type: true,
+        created_at: true,
+        memberships: {
+          select: {
+            id: true,
+            role_type: true,
+            approval_status: true,
+            community: { select: { id: true, name: true } },
+            unit: { select: { unit_code: true } },
+          },
+        },
+      },
+    });
+  }
+
+  async updateUserRole(userId: string, roleType: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+    return this.prisma.user.update({ where: { id: userId }, data: { role_type: roleType } });
+  }
+
+  async resendInvite(membershipId: string) {
+    const membership = await this.prisma.membership.findUnique({
+      where: { id: membershipId },
+      include: {
+        user: { select: { phone_number: true, status: true } },
+        community: { select: { name: true } },
+      },
+    });
+    if (!membership) throw new NotFoundException('Membership not found');
+
+    await this.sendWelcomeMessage(membership.user.phone_number, membership.community.name);
+    return { message: 'Invite resent' };
   }
 
   // ─── WhatsApp Welcome ──────────────────────────────────────────────────────

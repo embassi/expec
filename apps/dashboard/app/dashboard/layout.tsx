@@ -2,9 +2,9 @@
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { getSession, clearSession } from '@/lib/auth';
+import { getSession, clearSession, SessionUser } from '@/lib/auth';
 
-const NAV = [
+const BASE_NAV = [
   { href: '/dashboard', label: 'Overview' },
   { href: '/dashboard/communities', label: 'Communities' },
   { href: '/dashboard/memberships', label: 'Memberships' },
@@ -16,18 +16,27 @@ const NAV = [
   { href: '/dashboard/policies', label: 'Policies' },
 ];
 
+const SUPER_ADMIN_NAV = [
+  { href: '/dashboard/users', label: 'Users' },
+];
+
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const [ready, setReady] = useState(false);
+  const [user, setUser] = useState<SessionUser | null>(null);
 
   useEffect(() => {
     const session = getSession();
     if (!session) { router.replace('/login'); return; }
+    setUser(session.user);
     setReady(true);
   }, [router]);
 
   if (!ready) return null;
+
+  const isSuperAdmin = user?.role_type === 'super_admin';
+  const nav = isSuperAdmin ? [...BASE_NAV, ...SUPER_ADMIN_NAV] : BASE_NAV;
 
   function logout() {
     clearSession();
@@ -43,7 +52,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <p className="text-xs text-gray-400 mt-0.5">Dashboard</p>
         </div>
         <nav className="flex-1 px-3 py-4 space-y-0.5">
-          {NAV.map(item => (
+          {nav.map(item => (
             <Link
               key={item.href}
               href={item.href}

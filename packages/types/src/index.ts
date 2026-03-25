@@ -7,9 +7,26 @@ export enum RelationshipType {
   Staff = 'staff',
 }
 
+export enum GlobalRoleType {
+  SuperAdmin = 'super_admin',
+  User = 'user',
+}
+
 export enum RoleType {
+  // Legacy — kept for backward compatibility during migration
   Manager = 'manager',
+  // Community membership roles
+  CommunityAdmin = 'community_admin',
+  CommunityManager = 'community_manager',
+  Staff = 'staff',
+  Gatekeeper = 'gatekeeper',
   Resident = 'resident',
+}
+
+export enum UserStatus {
+  Active = 'active',
+  Invited = 'invited',
+  Suspended = 'suspended',
 }
 
 export enum ApprovalStatus {
@@ -83,6 +100,7 @@ export interface ApiUser {
   full_name: string | null;
   profile_photo_url: string | null;
   status: string;
+  role_type: string;
   created_at: string;
 }
 

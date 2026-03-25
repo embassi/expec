@@ -9,7 +9,7 @@ interface Membership {
   approval_status: string;
   relationship_type: string;
   role_type: string;
-  user: { phone_number: string; full_name: string | null };
+  user: { phone_number: string; full_name: string | null; status: string };
   unit: { unit_code: string } | null;
 }
 
@@ -22,6 +22,7 @@ export default function MembershipsPage() {
   const [units, setUnits] = useState<Unit[]>([]);
   const [loading, setLoading] = useState(false);
   const [updating, setUpdating] = useState('');
+  const [resending, setResending] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [formMode, setFormMode] = useState<FormMode>('owner');
   const [form, setForm] = useState({ phone_number: '', unit_id: '' });
@@ -54,6 +55,18 @@ export default function MembershipsPage() {
       setMemberships(ms => ms.map(m => m.id === id ? { ...m, approval_status: status } : m));
     } finally {
       setUpdating('');
+    }
+  }
+
+  async function resendInvite(membershipId: string) {
+    setResending(membershipId);
+    try {
+      await api.post(`/admin/memberships/${membershipId}/resend-invite`, {});
+      alert('Invite resent successfully');
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Failed');
+    } finally {
+      setResending('');
     }
   }
 
@@ -154,24 +167,37 @@ export default function MembershipsPage() {
                   <td className="px-4 py-3">
                     <p className="font-medium">{m.user.full_name || m.user.phone_number}</p>
                     {m.user.full_name && <p className="text-gray-400 text-xs">{m.user.phone_number}</p>}
+                    <span className={`inline-flex items-center mt-1 px-1.5 py-0.5 rounded text-xs font-medium ${
+                      m.user.status === 'active' ? 'bg-green-50 text-green-600' : 'bg-orange-50 text-orange-600'
+                    }`}>
+                      {m.user.status === 'active' ? 'Registered' : 'Not Registered'}
+                    </span>
                   </td>
                   <td className="px-4 py-3 text-gray-500">{m.unit?.unit_code || '—'}</td>
                   <td className="px-4 py-3 text-gray-500">{m.relationship_type || '—'}</td>
                   <td className="px-4 py-3 text-gray-500">{m.role_type}</td>
                   <td className="px-4 py-3"><StatusBadge status={m.approval_status} /></td>
                   <td className="px-4 py-3">
-                    {m.approval_status === 'pending' && (
-                      <div className="flex gap-2">
-                        <button disabled={updating === m.id} onClick={() => updateStatus(m.id, 'approved')}
-                          className="text-xs bg-brand-50 text-brand-700 hover:bg-brand-100 px-2 py-1 rounded-md font-medium">
-                          Approve
+                    <div className="flex gap-2">
+                      {m.approval_status === 'pending' && (
+                        <>
+                          <button disabled={updating === m.id} onClick={() => updateStatus(m.id, 'approved')}
+                            className="text-xs bg-brand-50 text-brand-700 hover:bg-brand-100 px-2 py-1 rounded-md font-medium">
+                            Approve
+                          </button>
+                          <button disabled={updating === m.id} onClick={() => updateStatus(m.id, 'rejected')}
+                            className="text-xs bg-red-50 text-red-600 hover:bg-red-100 px-2 py-1 rounded-md font-medium">
+                            Reject
+                          </button>
+                        </>
+                      )}
+                      {m.user.status === 'invited' && (
+                        <button disabled={resending === m.id} onClick={() => resendInvite(m.id)}
+                          className="text-xs bg-yellow-50 text-yellow-700 hover:bg-yellow-100 px-2 py-1 rounded-md font-medium disabled:opacity-50">
+                          {resending === m.id ? 'Sending…' : 'Resend Invite'}
                         </button>
-                        <button disabled={updating === m.id} onClick={() => updateStatus(m.id, 'rejected')}
-                          className="text-xs bg-red-50 text-red-600 hover:bg-red-100 px-2 py-1 rounded-md font-medium">
-                          Reject
-                        </button>
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}

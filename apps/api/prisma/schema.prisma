@@ -23,6 +23,7 @@ model User {
   memberships      Membership[]
   guest_passes     GuestPass[]
   service_requests ServiceRequest[]
+  assigned_scanners Scanner[]
 
   @@map("users")
 }
@@ -112,17 +113,19 @@ model Membership {
 // ─── Scanners ─────────────────────────────────────────────────────────────────
 
 model Scanner {
-  id             String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  community_id   String   @db.Uuid
-  scanner_name   String?
-  scanner_code   String   @unique
-  location_label String?
-  device_key     String
-  is_active      Boolean  @default(true)
-  created_at     DateTime @default(now())
+  id               String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  community_id     String   @db.Uuid
+  scanner_name     String?
+  scanner_code     String   @unique
+  location_label   String?
+  device_key       String
+  is_active        Boolean  @default(true)
+  assigned_user_id String?  @db.Uuid
+  created_at       DateTime @default(now())
 
-  community   Community   @relation(fields: [community_id], references: [id], onDelete: Cascade)
-  access_logs AccessLog[]
+  community     Community   @relation(fields: [community_id], references: [id], onDelete: Cascade)
+  assigned_user User?       @relation(fields: [assigned_user_id], references: [id])
+  access_logs   AccessLog[]
 
   @@map("scanners")
 }
