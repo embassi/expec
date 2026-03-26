@@ -16,6 +16,7 @@ import { GuestPassesModule } from './guest-passes/guest-passes.module';
 import { AnnouncementsModule } from './announcements/announcements.module';
 import { ServiceRequestsModule } from './service-requests/service-requests.module';
 import { AdminModule } from './admin/admin.module';
+import { StorageModule } from './storage/storage.module';
 
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { AllExceptionsFilter } from './common/filters/http-exception.filter';
@@ -39,6 +40,7 @@ import { AllExceptionsFilter } from './common/filters/http-exception.filter';
     AnnouncementsModule,
     ServiceRequestsModule,
     AdminModule,
+    StorageModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },
