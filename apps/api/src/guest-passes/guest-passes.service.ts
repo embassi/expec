@@ -16,6 +16,7 @@ import {
   RelationshipType,
   GuestPassQrPayload,
 } from '@simsim/types';
+import { Prisma } from '@prisma/client';
 import { Twilio } from 'twilio';
 
 @Injectable()
@@ -51,31 +52,37 @@ export class GuestPassesService {
     const policy = await this.getOrCreatePolicy(dto.community_id);
     this.assertCanGeneratePass(membership.relationship_type, policy);
 
-    // Check daily and active limits
-    await this.checkLimits(userId, dto.community_id, policy);
-
     // Get duration & usage from policy
     const { durationHours, usageLimit } = this.getPassDefaults(dto.pass_type, policy);
 
     const now = new Date();
     const validUntil = new Date(now.getTime() + durationHours * 60 * 60 * 1000);
 
-    const pass = await this.prisma.guestPass.create({
-      data: {
-        community_id: dto.community_id,
-        host_user_id: userId,
-        host_membership_id: membership.id,
-        guest_name: dto.guest_name,
-        guest_phone: dto.guest_phone,
-        pass_type: dto.pass_type,
-        status: PassStatus.Active,
-        valid_from: now,
-        valid_until: validUntil,
-        usage_limit: usageLimit,
-        usage_count: 0,
-        qr_token_version: 1,
+    // Wrap limit check + create in a serializable transaction to prevent
+    // two concurrent requests both passing the limit check and both creating passes.
+    const pass = await this.prisma.$transaction(
+      async (tx) => {
+        await this.checkLimits(userId, dto.community_id, policy, tx);
+
+        return tx.guestPass.create({
+          data: {
+            community_id: dto.community_id,
+            host_user_id: userId,
+            host_membership_id: membership.id,
+            guest_name: dto.guest_name,
+            guest_phone: dto.guest_phone,
+            pass_type: dto.pass_type,
+            status: PassStatus.Active,
+            valid_from: now,
+            valid_until: validUntil,
+            usage_limit: usageLimit,
+            usage_count: 0,
+            qr_token_version: 1,
+          },
+        });
       },
-    });
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
 
     // Generate signed pass token (no expiry — the pass itself carries validity)
     const passToken = this.generatePassToken(pass.id, pass.qr_token_version);
@@ -214,12 +221,18 @@ export class GuestPassesService {
     }
   }
 
-  private async checkLimits(userId: string, communityId: string, policy: any) {
+  private async checkLimits(
+    userId: string,
+    communityId: string,
+    policy: any,
+    tx?: Prisma.TransactionClient,
+  ) {
+    const db = tx ?? this.prisma;
     const now = new Date();
     const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
     const [activeCount, todayCount] = await Promise.all([
-      this.prisma.guestPass.count({
+      db.guestPass.count({
         where: {
           host_user_id: userId,
           community_id: communityId,
@@ -227,7 +240,7 @@ export class GuestPassesService {
           valid_until: { gt: now },
         },
       }),
-      this.prisma.guestPass.count({
+      db.guestPass.count({
         where: {
           host_user_id: userId,
           community_id: communityId,

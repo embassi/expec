@@ -141,15 +141,23 @@ export class ScannerService {
     if (now < pass.valid_from || now > pass.valid_until) {
       return this.deny(scanner, ScanType.Guest, 'Pass is outside its valid time window');
     }
-    if (pass.usage_count >= pass.usage_limit) {
-      return this.deny(scanner, ScanType.Guest, 'Pass usage limit reached');
-    }
 
-    // 6. Increment usage count
-    await this.prisma.guestPass.update({
-      where: { id: pass.id },
+    // 6. Atomically increment usage — WHERE guard prevents over-consumption under concurrency.
+    //    A single SQL UPDATE ... WHERE usage_count < usage_limit handles the check+increment
+    //    atomically, so two simultaneous scans cannot both succeed when at the limit.
+    const incremented = await this.prisma.guestPass.updateMany({
+      where: {
+        id: pass.id,
+        usage_count: { lt: pass.usage_limit },
+        status: PassStatus.Active,
+        qr_token_version: payload.v, // re-validate version atomically
+      },
       data: { usage_count: { increment: 1 } },
     });
+
+    if (incremented.count === 0) {
+      return this.deny(scanner, ScanType.Guest, 'Pass usage limit reached');
+    }
 
     // 7. Log
     await this.writeLog({
