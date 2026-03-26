@@ -4,6 +4,7 @@ import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD, APP_FILTER } from '@nestjs/core';
 
 import { PrismaModule } from './prisma/prisma.module';
+import { QueueModule } from './queue/queue.module';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { CommunitiesModule } from './communities/communities.module';
@@ -26,6 +27,7 @@ import { AllExceptionsFilter } from './common/filters/http-exception.filter';
       { name: 'short', ttl: 60000, limit: 120 },
     ]),
     PrismaModule,
+    QueueModule,
     AuthModule,
     UsersModule,
     CommunitiesModule,

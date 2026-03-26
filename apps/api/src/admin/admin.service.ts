@@ -1,6 +1,8 @@
-import { Injectable, NotFoundException, ConflictException, ForbiddenException, Logger } from '@nestjs/common';
+import { Injectable, OnModuleInit, NotFoundException, ConflictException, ForbiddenException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
+import { QueueService, QUEUE_JOBS } from '../queue/queue.service';
+import { SendWelcomeJobData } from '../queue/job-types';
 import { CreateCommunityDto } from './dto/create-community.dto';
 import { CreateUnitDto } from './dto/create-unit.dto';
 import { AssignOwnerDto } from './dto/assign-owner.dto';
@@ -13,17 +15,29 @@ import { randomBytes } from 'crypto';
 import { Twilio } from 'twilio';
 
 @Injectable()
-export class AdminService {
+export class AdminService implements OnModuleInit {
   private readonly logger = new Logger(AdminService.name);
   private twilioClient: Twilio;
 
   constructor(
     private prisma: PrismaService,
     private config: ConfigService,
+    private queue: QueueService,
   ) {
     this.twilioClient = new Twilio(
       this.config.get('TWILIO_ACCOUNT_SID'),
       this.config.get('TWILIO_AUTH_TOKEN'),
+    );
+  }
+
+  async onModuleInit() {
+    await this.queue.registerWorker<SendWelcomeJobData>(
+      QUEUE_JOBS.SEND_WELCOME,
+      async (jobs) => {
+        for (const job of jobs) {
+          await this.sendWelcomeMessage(job.data.phoneNumber, job.data.communityName);
+        }
+      },
     );
   }
 
@@ -149,10 +163,11 @@ export class AdminService {
       },
     });
 
-    // Send WhatsApp welcome message (fire-and-forget)
-    this.sendWelcomeMessage(dto.phone_number, community.name).catch(err =>
-      this.logger.warn(`Failed to send welcome WhatsApp to ${dto.phone_number}: ${err.message}`),
-    );
+    // Enqueue WhatsApp welcome message — async with up to 3 retries
+    await this.queue.enqueue<SendWelcomeJobData>(QUEUE_JOBS.SEND_WELCOME, {
+      phoneNumber: dto.phone_number,
+      communityName: community.name,
+    });
 
     return membership;
   }
@@ -390,10 +405,11 @@ export class AdminService {
       },
     });
 
-    // Send WhatsApp welcome message (fire-and-forget)
-    this.sendWelcomeMessage(phoneNumber, community.name).catch(err =>
-      this.logger.warn(`Failed to send welcome WhatsApp to ${phoneNumber}: ${err.message}`),
-    );
+    // Enqueue WhatsApp welcome message — async with up to 3 retries
+    await this.queue.enqueue<SendWelcomeJobData>(QUEUE_JOBS.SEND_WELCOME, {
+      phoneNumber,
+      communityName: community.name,
+    });
 
     return membership;
   }
@@ -441,7 +457,10 @@ export class AdminService {
 
     this.assertCommunityAccess(actingUser, membership.community_id);
 
-    await this.sendWelcomeMessage(membership.user.phone_number, membership.community.name);
+    await this.queue.enqueue<SendWelcomeJobData>(QUEUE_JOBS.SEND_WELCOME, {
+      phoneNumber: membership.user.phone_number,
+      communityName: membership.community.name,
+    });
     return { message: 'Invite resent' };
   }
 

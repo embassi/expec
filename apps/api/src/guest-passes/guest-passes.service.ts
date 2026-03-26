@@ -1,5 +1,6 @@
 import {
   Injectable,
+  OnModuleInit,
   NotFoundException,
   ForbiddenException,
   BadRequestException,
@@ -8,6 +9,8 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
+import { QueueService, QUEUE_JOBS } from '../queue/queue.service';
+import { SendGuestPassJobData } from '../queue/job-types';
 import * as Sentry from '@sentry/nestjs';
 import { CreateGuestPassDto } from './dto/create-guest-pass.dto';
 import {
@@ -21,7 +24,7 @@ import { Prisma } from '@prisma/client';
 import { Twilio } from 'twilio';
 
 @Injectable()
-export class GuestPassesService {
+export class GuestPassesService implements OnModuleInit {
   private readonly logger = new Logger(GuestPassesService.name);
   private twilioClient: Twilio;
 
@@ -29,10 +32,23 @@ export class GuestPassesService {
     private prisma: PrismaService,
     private jwtService: JwtService,
     private config: ConfigService,
+    private queue: QueueService,
   ) {
     this.twilioClient = new Twilio(
       this.config.get('TWILIO_ACCOUNT_SID'),
       this.config.get('TWILIO_AUTH_TOKEN'),
+    );
+  }
+
+  async onModuleInit() {
+    await this.queue.registerWorker<SendGuestPassJobData>(
+      QUEUE_JOBS.SEND_GUEST_PASS,
+      async (jobs) => {
+        for (const job of jobs) {
+          const { guestPhone, guestName, passUrl, passType } = job.data;
+          await this.sendPassLink(guestPhone, guestName, passUrl, passType as PassType);
+        }
+      },
     );
   }
 
@@ -89,8 +105,13 @@ export class GuestPassesService {
     const passToken = this.generatePassToken(pass.id, pass.qr_token_version);
     const passUrl = `${this.config.get('APP_BASE_URL')}/pass/${passToken}`;
 
-    // Send via WhatsApp
-    await this.sendPassLink(dto.guest_phone, dto.guest_name, passUrl, dto.pass_type);
+    // Enqueue WhatsApp send — async with up to 3 retries; pass is already persisted
+    await this.queue.enqueue<SendGuestPassJobData>(QUEUE_JOBS.SEND_GUEST_PASS, {
+      guestPhone: dto.guest_phone,
+      guestName: dto.guest_name,
+      passUrl,
+      passType: dto.pass_type,
+    });
 
     return {
       id: pass.id,
@@ -281,7 +302,7 @@ export class GuestPassesService {
     } catch (err) {
       this.logger.error(`Failed to send pass link to ${guestPhone}`, err);
       Sentry.captureException(err, { tags: { event: 'guest_pass_send_failed' } });
-      // Don't throw — pass is already created, link can be shared manually
+      throw err; // re-throw so pg-boss retries the job
     }
   }
 }

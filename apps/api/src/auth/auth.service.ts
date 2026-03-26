@@ -5,10 +5,13 @@ import {
   HttpException,
   HttpStatus,
   Logger,
+  OnModuleInit,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
+import { QueueService, QUEUE_JOBS } from '../queue/queue.service';
+import { SendOtpJobData } from '../queue/job-types';
 import { Twilio } from 'twilio';
 import { createHmac } from 'crypto';
 import * as Sentry from '@sentry/nestjs';
@@ -17,7 +20,7 @@ const MAX_OTP_ATTEMPTS = 5;
 const OTP_RESEND_COOLDOWN_MS = 60_000; // 60 seconds
 
 @Injectable()
-export class AuthService {
+export class AuthService implements OnModuleInit {
   private readonly logger = new Logger(AuthService.name);
   private twilioClient: Twilio;
 
@@ -25,10 +28,24 @@ export class AuthService {
     private prisma: PrismaService,
     private jwtService: JwtService,
     private config: ConfigService,
+    private queue: QueueService,
   ) {
     this.twilioClient = new Twilio(
       this.config.get('TWILIO_ACCOUNT_SID'),
       this.config.get('TWILIO_AUTH_TOKEN'),
+    );
+  }
+
+  async onModuleInit() {
+    // pg-boss v12 delivers jobs in batches; process each item sequentially
+    await this.queue.registerWorker<SendOtpJobData>(
+      QUEUE_JOBS.SEND_OTP,
+      async (jobs) => {
+        for (const job of jobs) {
+          await this.sendWhatsAppOtp(job.data.phoneNumber, job.data.otp);
+        }
+      },
+      { localConcurrency: 3 },
     );
   }
 
@@ -77,7 +94,12 @@ export class AuthService {
       // OTP is only logged in development — never emitted in production
       this.logger.log(`[DEV] OTP for ${phoneNumber}: ${otp}`);
     } else {
-      await this.sendWhatsAppOtp(phoneNumber, otp);
+      // Enqueue — Twilio send happens async with up to 3 retries (30s → 5m → ~1h)
+      // The OTP hash is already persisted, so retries are safe
+      await this.queue.enqueue<SendOtpJobData>(QUEUE_JOBS.SEND_OTP, {
+        phoneNumber,
+        otp,
+      });
     }
 
     return { message: isDev ? 'OTP sent (dev: use 123456)' : 'OTP sent via WhatsApp' };
@@ -204,7 +226,7 @@ export class AuthService {
     } catch (err) {
       this.logger.error(`Failed to send WhatsApp OTP to ${phoneNumber}`, err);
       Sentry.captureException(err, { tags: { event: 'otp_send_failed' } });
-      throw new BadRequestException('Failed to send OTP. Please try again.');
+      throw err; // re-throw so pg-boss retries the job
     }
   }
 }
