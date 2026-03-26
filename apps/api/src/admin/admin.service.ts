@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ConflictException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, ForbiddenException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateCommunityDto } from './dto/create-community.dto';
@@ -8,7 +8,7 @@ import { UpdateMembershipStatusDto } from './dto/update-membership-status.dto';
 import { CreateScannerDto } from './dto/create-scanner.dto';
 import { CreateAnnouncementDto } from './dto/create-announcement.dto';
 import { UpdatePolicyDto } from './dto/update-policy.dto';
-import { ApprovalStatus, RelationshipType, RoleType, AnnouncementStatus } from '@simsim/types';
+import { ApprovalStatus, GlobalRoleType, RelationshipType, RoleType, AnnouncementStatus } from '@simsim/types';
 import { randomBytes } from 'crypto';
 import { Twilio } from 'twilio';
 
@@ -25,6 +25,36 @@ export class AdminService {
       this.config.get('TWILIO_ACCOUNT_SID'),
       this.config.get('TWILIO_AUTH_TOKEN'),
     );
+  }
+
+  // ─── Authorization helper ──────────────────────────────────────────────────
+
+  /**
+   * Asserts that the acting user has an approved admin or manager membership
+   * in the given community. Super admins always pass.
+   * Used for routes where communityId must be resolved from a resource record.
+   */
+  private assertCommunityAccess(
+    user: any,
+    communityId: string,
+    requireAdmin = false,
+  ): void {
+    if (user.role_type === GlobalRoleType.SuperAdmin) return;
+
+    const allowedRoles: string[] = requireAdmin
+      ? [RoleType.CommunityAdmin]
+      : [RoleType.CommunityAdmin, RoleType.CommunityManager, RoleType.Manager];
+
+    const hasAccess = user.memberships?.some(
+      (m: { community_id: string; role_type: string; approval_status: string }) =>
+        m.community_id === communityId &&
+        allowedRoles.includes(m.role_type) &&
+        m.approval_status === 'approved',
+    );
+
+    if (!hasAccess) {
+      throw new ForbiddenException('Access denied to this community');
+    }
   }
 
   // ─── Communities ───────────────────────────────────────────────────────────
@@ -143,9 +173,11 @@ export class AdminService {
     });
   }
 
-  async updateMembershipStatus(membershipId: string, dto: UpdateMembershipStatusDto) {
+  async updateMembershipStatus(membershipId: string, dto: UpdateMembershipStatusDto, actingUser: any) {
     const membership = await this.prisma.membership.findUnique({ where: { id: membershipId } });
     if (!membership) throw new NotFoundException('Membership not found');
+
+    this.assertCommunityAccess(actingUser, membership.community_id);
 
     return this.prisma.membership.update({
       where: { id: membershipId },
@@ -192,7 +224,12 @@ export class AdminService {
     });
   }
 
-  async assignScanner(scannerId: string, phoneNumber: string | null) {
+  async assignScanner(scannerId: string, phoneNumber: string | null, actingUser: any) {
+    const scanner = await this.prisma.scanner.findUnique({ where: { id: scannerId } });
+    if (!scanner) throw new NotFoundException('Scanner not found');
+
+    this.assertCommunityAccess(actingUser, scanner.community_id, true);
+
     if (phoneNumber === null) {
       return this.prisma.scanner.update({
         where: { id: scannerId },
@@ -209,8 +246,12 @@ export class AdminService {
     });
   }
 
-  async toggleScanner(scannerId: string) {
-    const scanner = await this.prisma.scanner.findUniqueOrThrow({ where: { id: scannerId } });
+  async toggleScanner(scannerId: string, actingUser: any) {
+    const scanner = await this.prisma.scanner.findUnique({ where: { id: scannerId } });
+    if (!scanner) throw new NotFoundException('Scanner not found');
+
+    this.assertCommunityAccess(actingUser, scanner.community_id);
+
     return this.prisma.scanner.update({
       where: { id: scannerId },
       data: { is_active: !scanner.is_active },
@@ -307,7 +348,12 @@ export class AdminService {
     });
   }
 
-  async updateServiceRequestStatus(requestId: string, status: string) {
+  async updateServiceRequestStatus(requestId: string, status: string, actingUser: any) {
+    const request = await this.prisma.serviceRequest.findUnique({ where: { id: requestId } });
+    if (!request) throw new NotFoundException('Service request not found');
+
+    this.assertCommunityAccess(actingUser, request.community_id);
+
     return this.prisma.serviceRequest.update({
       where: { id: requestId },
       data: { status },
@@ -383,7 +429,7 @@ export class AdminService {
     return this.prisma.user.update({ where: { id: userId }, data: { role_type: roleType } });
   }
 
-  async resendInvite(membershipId: string) {
+  async resendInvite(membershipId: string, actingUser: any) {
     const membership = await this.prisma.membership.findUnique({
       where: { id: membershipId },
       include: {
@@ -392,6 +438,8 @@ export class AdminService {
       },
     });
     if (!membership) throw new NotFoundException('Membership not found');
+
+    this.assertCommunityAccess(actingUser, membership.community_id);
 
     await this.sendWelcomeMessage(membership.user.phone_number, membership.community.name);
     return { message: 'Invite resent' };
