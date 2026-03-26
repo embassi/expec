@@ -1,4 +1,5 @@
 import type { NextConfig } from 'next';
+import { withSentryConfig } from '@sentry/nextjs';
 
 const nextConfig: NextConfig = {
   env: {
@@ -6,4 +7,14 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+export default withSentryConfig(nextConfig, {
+  // Suppresses source map upload warnings when SENTRY_AUTH_TOKEN is not set (local dev)
+  silent: !process.env.SENTRY_AUTH_TOKEN,
+  // Upload source maps to Sentry only in CI/prod when auth token is present
+  sourcemaps: {
+    disable: !process.env.SENTRY_AUTH_TOKEN,
+  },
+  // Auto-instrument Next.js API routes and server components
+  autoInstrumentServerFunctions: true,
+  autoInstrumentMiddleware: true,
+});

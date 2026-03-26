@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
+import * as Sentry from '@sentry/nestjs';
 import {
   ScanResult,
   ScanType,
@@ -224,6 +225,7 @@ export class ScannerService {
       await this.prisma.accessLog.create({ data });
     } catch (err) {
       this.logger.error('Failed to write access log', err);
+      Sentry.captureException(err, { tags: { event: 'access_log_write_failed' } });
     }
   }
 }

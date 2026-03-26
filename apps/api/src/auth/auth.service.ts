@@ -11,6 +11,7 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { Twilio } from 'twilio';
 import { createHmac } from 'crypto';
+import * as Sentry from '@sentry/nestjs';
 
 const MAX_OTP_ATTEMPTS = 5;
 const OTP_RESEND_COOLDOWN_MS = 60_000; // 60 seconds
@@ -202,6 +203,7 @@ export class AuthService {
       this.logger.log(`OTP dispatched SID=${msg.sid}`);
     } catch (err) {
       this.logger.error(`Failed to send WhatsApp OTP to ${phoneNumber}`, err);
+      Sentry.captureException(err, { tags: { event: 'otp_send_failed' } });
       throw new BadRequestException('Failed to send OTP. Please try again.');
     }
   }

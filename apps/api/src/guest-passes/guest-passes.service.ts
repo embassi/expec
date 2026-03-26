@@ -8,6 +8,7 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
+import * as Sentry from '@sentry/nestjs';
 import { CreateGuestPassDto } from './dto/create-guest-pass.dto';
 import {
   PassType,
@@ -279,6 +280,7 @@ export class GuestPassesService {
       await this.twilioClient.messages.create({ from, to, body });
     } catch (err) {
       this.logger.error(`Failed to send pass link to ${guestPhone}`, err);
+      Sentry.captureException(err, { tags: { event: 'guest_pass_send_failed' } });
       // Don't throw — pass is already created, link can be shared manually
     }
   }
