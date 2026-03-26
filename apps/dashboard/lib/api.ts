@@ -1,26 +1,26 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
-
-function getToken(): string | null {
-  if (typeof window === 'undefined') return null;
-  // Try cookie first (set by saveSession for middleware compatibility)
-  const cookieMatch = document.cookie.match(/(^| )simsim_token=([^;]+)/);
-  if (cookieMatch) return decodeURIComponent(cookieMatch[2]);
-  return localStorage.getItem('access_token');
-}
+/**
+ * All dashboard API calls are proxied through /api/proxy/[...path].
+ * The Next.js proxy route reads the HttpOnly session cookie server-side
+ * and injects the Authorization: Bearer header before forwarding to the API.
+ * This keeps the JWT entirely off client-side JavaScript.
+ */
+const PROXY_BASE = '/api/proxy';
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const token = getToken();
-  const res = await fetch(`${API_URL}${path}`, {
+  const res = await fetch(`${PROXY_BASE}${path}`, {
     ...options,
+    credentials: 'same-origin',
     headers: {
       'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...options.headers,
     },
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ message: 'Request failed' }));
-    const msg = err.message ?? (typeof err.error === 'string' ? err.error : err.error?.message) ?? 'Request failed';
+    const msg =
+      err.message ??
+      (typeof err.error === 'string' ? err.error : err.error?.message) ??
+      'Request failed';
     throw new Error(msg);
   }
   return res.json();

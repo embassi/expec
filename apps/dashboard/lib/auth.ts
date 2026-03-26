@@ -6,30 +6,35 @@ export interface SessionUser {
   full_name: string | null;
   role_type: string;
   status: string;
+  memberships?: Array<{
+    id: string;
+    role_type: string;
+    approval_status: string;
+    community: { id: string; name: string };
+  }>;
 }
 
-export function saveSession(token: string, user: SessionUser) {
-  localStorage.setItem('access_token', token);
-  localStorage.setItem('user', JSON.stringify(user));
-  // Also write to cookie so Next.js middleware can read it for auth routing
-  document.cookie = `simsim_token=${encodeURIComponent(token)}; path=/; SameSite=Strict; max-age=2592000`;
+/**
+ * Fetches the current user from the BFF /api/auth/me route.
+ * The JWT lives in an HttpOnly cookie — this function never sees the raw token.
+ * Returns null if unauthenticated or on any error.
+ */
+export async function getCurrentUser(): Promise<SessionUser | null> {
+  try {
+    const res = await fetch('/api/auth/me', { credentials: 'same-origin' });
+    if (!res.ok) return null;
+    return res.json();
+  } catch {
+    return null;
+  }
 }
 
-export function getSession(): { token: string; user: SessionUser } | null {
-  if (typeof window === 'undefined') return null;
-  const token = localStorage.getItem('access_token');
-  const user = localStorage.getItem('user');
-  if (!token || !user) return null;
-  return { token, user: JSON.parse(user) };
-}
-
-export function clearSession() {
-  localStorage.removeItem('access_token');
-  localStorage.removeItem('user');
-  document.cookie = 'simsim_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
-}
-
-export function isSuperAdmin(): boolean {
-  const session = getSession();
-  return session?.user?.role_type === 'super_admin';
+/**
+ * Logs out by calling the BFF logout route, which clears the HttpOnly cookie.
+ */
+export async function logout(): Promise<void> {
+  await fetch('/api/auth/logout', {
+    method: 'POST',
+    credentials: 'same-origin',
+  }).catch(() => {});
 }

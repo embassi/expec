@@ -1,9 +1,7 @@
 'use client';
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
-import { getSession } from '@/lib/auth';
 import { useFetch, mutate } from '@/lib/hooks';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
@@ -30,16 +28,10 @@ interface User {
 const GLOBAL_ROLES = ['user', 'super_admin'];
 
 export default function UsersPage() {
-  const router = useRouter();
   const [expanded, setExpanded] = useState<string | null>(null);
   const [updating, setUpdating] = useState<string | null>(null);
 
-  const session = getSession();
-  if (session?.user?.role_type !== 'super_admin') {
-    router.replace('/dashboard');
-    return null;
-  }
-
+  // SuperAdminGuard on the API will reject unauthorized access; middleware guards the route
   const { data: users, isLoading } = useFetch<User[]>('/admin/users');
 
   async function handleRoleChange(userId: string, roleType: string) {

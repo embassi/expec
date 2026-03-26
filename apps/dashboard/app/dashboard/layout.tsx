@@ -2,10 +2,11 @@
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { getSession, clearSession, SessionUser } from '@/lib/auth';
+import { getCurrentUser, logout as doLogout, SessionUser } from '@/lib/auth';
 
 const BASE_NAV = [
   { href: '/dashboard', label: 'Overview' },
+  { href: '/dashboard/users', label: 'Users' },
   { href: '/dashboard/communities', label: 'Communities' },
   { href: '/dashboard/memberships', label: 'Memberships' },
   { href: '/dashboard/units', label: 'Units' },
@@ -16,28 +17,18 @@ const BASE_NAV = [
   { href: '/dashboard/policies', label: 'Policies' },
 ];
 
-const SUPER_ADMIN_NAV = [
-  { href: '/dashboard/users', label: 'Users' },
-];
-
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const [user, setUser] = useState<SessionUser | null>(null);
 
   useEffect(() => {
-    // Middleware handles unauthenticated redirects; here we just load the user object
-    const session = getSession();
-    if (session) setUser(session.user);
+    // Middleware already validated the session; fetch user object for display
+    getCurrentUser().then(u => { if (u) setUser(u); });
   }, []);
 
-  const isSuperAdmin = user?.role_type === 'super_admin';
-  const nav = isSuperAdmin
-    ? [BASE_NAV[0], ...SUPER_ADMIN_NAV, ...BASE_NAV.slice(1)]
-    : BASE_NAV;
-
-  function logout() {
-    clearSession();
+  async function handleLogout() {
+    await doLogout();
     router.replace('/login');
   }
 
@@ -50,7 +41,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <p className="text-xs text-gray-400 mt-0.5">Dashboard</p>
         </div>
         <nav className="flex-1 px-3 py-4 space-y-0.5">
-          {nav.map(item => (
+          {BASE_NAV.map(item => (
             <Link
               key={item.href}
               href={item.href}
@@ -65,8 +56,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </Link>
           ))}
         </nav>
-        <div className="px-5 py-4 border-t border-gray-100">
-          <button onClick={logout} className="text-xs text-gray-400 hover:text-gray-600">
+        <div className="px-5 py-4 border-t border-gray-100 space-y-2">
+          {user && (
+            <p className="text-xs text-gray-500 truncate">{user.phone_number}</p>
+          )}
+          <button
+            onClick={handleLogout}
+            className="text-xs text-gray-400 hover:text-gray-600"
+          >
             Sign out
           </button>
         </div>
