@@ -1,7 +1,11 @@
 import * as SecureStore from 'expo-secure-store';
 import { STORAGE_KEYS } from './storage-keys';
 
-const API_URL = 'https://patient-presence-production-7e3f.up.railway.app';
+// Set EXPO_PUBLIC_API_URL in your .env file (see .env.example).
+// Expo SDK 49+ inlines EXPO_PUBLIC_* vars at build time.
+const API_URL =
+  process.env.EXPO_PUBLIC_API_URL ??
+  'https://patient-presence-production-7e3f.up.railway.app';
 
 async function getToken(): Promise<string | null> {
   return SecureStore.getItemAsync(STORAGE_KEYS.ACCESS_TOKEN);

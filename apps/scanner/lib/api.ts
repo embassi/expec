@@ -1,6 +1,10 @@
 import { getCredentials, getUserToken } from './credentials';
 
-const API_URL = 'https://patient-presence-production-7e3f.up.railway.app';
+// Set EXPO_PUBLIC_API_URL in your .env file (see .env.example).
+// Expo SDK 49+ inlines EXPO_PUBLIC_* vars at build time.
+const API_URL =
+  process.env.EXPO_PUBLIC_API_URL ??
+  'https://patient-presence-production-7e3f.up.railway.app';
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = await getUserToken();
