@@ -1,10 +1,10 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
 import { STORAGE_KEYS } from './storage-keys';
 
 const API_URL = 'https://patient-presence-production-7e3f.up.railway.app';
 
 async function getToken(): Promise<string | null> {
-  return AsyncStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
+  return SecureStore.getItemAsync(STORAGE_KEYS.ACCESS_TOKEN);
 }
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {

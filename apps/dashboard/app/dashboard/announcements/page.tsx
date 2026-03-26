@@ -1,7 +1,10 @@
 'use client';
 import { useState } from 'react';
+import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import { useFetch, mutate } from '@/lib/hooks';
+import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 
 interface Community { id: string; name: string }
 interface Announcement { id: string; title: string; body: string; created_at: string }
@@ -25,7 +28,10 @@ export default function AnnouncementsPage() {
       await api.post<Announcement>('/admin/announcements', { ...form, community_id: communityId });
       setShowForm(false);
       setForm({ title: '', body: '' });
+      toast.success('Announcement published');
       mutate(`/admin/communities/${communityId}/announcements`);
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Failed to publish');
     } finally {
       setSaving(false);
     }
@@ -40,9 +46,7 @@ export default function AnnouncementsPage() {
             className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500">
             {communities?.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
-          <button onClick={() => setShowForm(true)} className="bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium px-4 py-2 rounded-lg">
-            + New Announcement
-          </button>
+          <Button onClick={() => setShowForm(true)} size="sm">+ New Announcement</Button>
         </div>
       </div>
 
@@ -61,16 +65,18 @@ export default function AnnouncementsPage() {
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
             </div>
             <div className="flex gap-2">
-              <button type="submit" disabled={saving} className="bg-brand-600 text-white text-sm px-4 py-2 rounded-lg disabled:opacity-50">
-                {saving ? 'Publishing…' : 'Publish'}
-              </button>
-              <button type="button" onClick={() => setShowForm(false)} className="text-sm text-gray-500 px-4 py-2">Cancel</button>
+              <Button type="submit" disabled={saving} size="sm">{saving ? 'Publishing…' : 'Publish'}</Button>
+              <Button type="button" variant="ghost" size="sm" onClick={() => setShowForm(false)}>Cancel</Button>
             </div>
           </form>
         </div>
       )}
 
-      {isLoading ? <p className="text-gray-400 text-sm">Loading…</p> : (
+      {isLoading ? (
+        <div className="space-y-3">
+          {[1, 2, 3].map(i => <Skeleton key={i} className="h-24 rounded-xl" />)}
+        </div>
+      ) : (
         <div className="space-y-3">
           {items?.map(a => (
             <div key={a.id} className="bg-white border border-gray-200 rounded-xl p-5">

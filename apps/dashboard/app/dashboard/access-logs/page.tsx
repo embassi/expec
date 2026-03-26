@@ -1,6 +1,9 @@
 'use client';
 import { useState } from 'react';
 import { useFetch } from '@/lib/hooks';
+import { Badge } from '@/components/ui/badge';
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell, TableEmpty } from '@/components/ui/table';
+import { Skeleton } from '@/components/ui/skeleton';
 
 interface Community { id: string; name: string }
 interface Log {
@@ -38,39 +41,39 @@ export default function AccessLogsPage() {
           <div className="h-10 bg-gray-50 border-b border-gray-200" />
           {[1,2,3,4,5].map(i => (
             <div key={i} className="flex gap-4 px-4 py-3 border-b border-gray-100">
-              {[1,2,3,4,5].map(j => <div key={j} className="flex-1 h-4 bg-gray-100 rounded animate-pulse" />)}
+              {[1,2,3,4,5].map(j => <Skeleton key={j} className="flex-1 h-4" />)}
             </div>
           ))}
         </div>
       ) : (
         <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b border-gray-200">
-              <tr><Th>Time</Th><Th>Person</Th><Th>Scanner</Th><Th>Type</Th><Th>Result</Th></tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Time</TableHead>
+                <TableHead>Person</TableHead>
+                <TableHead>Scanner</TableHead>
+                <TableHead>Type</TableHead>
+                <TableHead>Result</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {logs.map(l => (
-                <tr key={l.id}>
-                  <td className="px-4 py-3 text-gray-500 whitespace-nowrap">{new Date(l.scanned_at).toLocaleString()}</td>
-                  <td className="px-4 py-3">{l.resident_name || l.resident_phone || '—'}</td>
-                  <td className="px-4 py-3 text-gray-500">{l.scanner?.scanner_name || '—'}</td>
-                  <td className="px-4 py-3 text-gray-500">{l.scan_type || '—'}</td>
-                  <td className="px-4 py-3">
-                    <span className={`text-xs font-medium px-2 py-1 rounded-full ${
-                      l.result === 'granted' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'
-                    }`}>{l.result}</span>
-                  </td>
-                </tr>
+                <TableRow key={l.id}>
+                  <TableCell className="text-gray-500 whitespace-nowrap">{new Date(l.scanned_at).toLocaleString()}</TableCell>
+                  <TableCell>{l.resident_name || l.resident_phone || '—'}</TableCell>
+                  <TableCell className="text-gray-500">{l.scanner?.scanner_name || '—'}</TableCell>
+                  <TableCell className="text-gray-500">{l.scan_type || '—'}</TableCell>
+                  <TableCell>
+                    <Badge variant={l.result === 'granted' ? 'success' : 'error'}>{l.result}</Badge>
+                  </TableCell>
+                </TableRow>
               ))}
-              {logs.length === 0 && <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-400">No logs yet</td></tr>}
-            </tbody>
-          </table>
+              {logs.length === 0 && <TableEmpty colSpan={5}>No logs yet</TableEmpty>}
+            </TableBody>
+          </Table>
         </div>
       )}
     </div>
   );
-}
-
-function Th({ children }: { children: React.ReactNode }) {
-  return <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">{children}</th>;
 }

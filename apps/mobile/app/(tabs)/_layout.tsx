@@ -1,6 +1,7 @@
-import { Tabs } from 'expo-router';
-import { Text } from 'react-native';
+import { Tabs, useRouter } from 'expo-router';
+import { Text, TouchableOpacity } from 'react-native';
 import { Colors } from '../../lib/colors';
+import { clearSession } from '../../lib/auth';
 
 function TabIcon({ label, focused }: { label: string; focused: boolean }) {
   const icons: Record<string, string> = {
@@ -13,6 +14,19 @@ function TabIcon({ label, focused }: { label: string; focused: boolean }) {
     <Text style={{ fontSize: 20, opacity: focused ? 1 : 0.5 }}>
       {icons[label] ?? '•'}
     </Text>
+  );
+}
+
+function LogoutButton() {
+  const router = useRouter();
+  async function handleLogout() {
+    await clearSession();
+    router.replace('/(auth)/phone');
+  }
+  return (
+    <TouchableOpacity onPress={handleLogout} style={{ marginRight: 16 }}>
+      <Text style={{ fontSize: 14, fontWeight: '600', color: Colors.onPrimary }}>Sign out</Text>
+    </TouchableOpacity>
   );
 }
 
@@ -36,6 +50,7 @@ export default function TabLayout() {
         options={{
           title: 'My QR',
           tabBarIcon: ({ focused }) => <TabIcon label="QR" focused={focused} />,
+          headerRight: () => <LogoutButton />,
         }}
       />
       <Tabs.Screen

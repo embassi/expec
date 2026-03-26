@@ -11,6 +11,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import Animated, { SlideInDown } from 'react-native-reanimated';
 import { api } from '../lib/api';
 import { Colors } from '../lib/colors';
 
@@ -23,7 +24,7 @@ interface Props {
   visible: boolean;
   communities: Community[];
   onClose: () => void;
-  onCreated: (pass: unknown) => void;
+  onCreated: () => void;
 }
 
 const PASS_TYPES = [
@@ -53,13 +54,13 @@ export function CreatePassModal({ visible, communities, onClose, onCreated }: Pr
     setSaving(true);
     setError('');
     try {
-      const pass = await api.post('/guest-passes', {
+      await api.post('/guest-passes', {
         guest_name: guestName.trim(),
         guest_phone: guestPhone.trim(),
         pass_type: passType,
         community_id: communityId,
       });
-      onCreated(pass);
+      onCreated();
       reset();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create pass');
@@ -76,10 +77,11 @@ export function CreatePassModal({ visible, communities, onClose, onCreated }: Pr
   return (
     <Modal
       visible={visible}
-      animationType="slide"
+      animationType="none"
       presentationStyle="pageSheet"
       onRequestClose={handleClose}
     >
+      <Animated.View entering={SlideInDown.springify().damping(18)} style={{ flex: 1 }}>
       <KeyboardAvoidingView
         style={styles.container}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -160,6 +162,7 @@ export function CreatePassModal({ visible, communities, onClose, onCreated }: Pr
           </TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>
+      </Animated.View>
     </Modal>
   );
 }

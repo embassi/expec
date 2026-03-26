@@ -26,6 +26,11 @@ export const Colors = {
   tabBarActive: '#EAB308',
   tabBarInactive: '#9CA3AF',
 
+  // Auth screen
+  backgroundCream: '#F5EFD6',
+  whatsappGreen: '#25D366',
+  whatsappGreenDark: '#1EBE57',
+
   // Status badges
   statusGranted: '#D1FAE5',
   statusGrantedText: '#065F46',
