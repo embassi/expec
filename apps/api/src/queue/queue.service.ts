@@ -7,6 +7,7 @@ export const QUEUE_JOBS = {
   SEND_OTP: 'send-otp',
   SEND_GUEST_PASS: 'send-guest-pass',
   SEND_WELCOME: 'send-welcome',
+  ARCHIVE_ACCESS_LOGS: 'archive-access-logs',
 } as const;
 
 export type QueueJobName = (typeof QUEUE_JOBS)[keyof typeof QUEUE_JOBS];
