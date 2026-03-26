@@ -7,8 +7,6 @@ import {
   Param,
   Query,
   UseGuards,
-  ParseIntPipe,
-  DefaultValuePipe,
   Header,
 } from '@nestjs/common';
 import { AdminService } from './admin.service';
@@ -23,6 +21,10 @@ import { UpdateMembershipStatusDto } from './dto/update-membership-status.dto';
 import { CreateScannerDto } from './dto/create-scanner.dto';
 import { CreateAnnouncementDto } from './dto/create-announcement.dto';
 import { UpdatePolicyDto } from './dto/update-policy.dto';
+import { ListMembershipsDto } from './dto/list-memberships.dto';
+import { ListServiceRequestsDto } from './dto/list-service-requests.dto';
+import { ListAnnouncementsDto } from './dto/list-announcements.dto';
+import { ListAccessLogsDto } from './dto/list-access-logs.dto';
 import { User } from '@prisma/client';
 import { Matches } from 'class-validator';
 
@@ -125,9 +127,9 @@ export class AdminController {
   @Get('communities/:communityId/memberships')
   listMemberships(
     @Param('communityId') communityId: string,
-    @Query('status') status?: string,
+    @Query() query: ListMembershipsDto,
   ) {
-    return this.adminService.listMemberships(communityId, status);
+    return this.adminService.listMemberships(communityId, query);
   }
 
   /** communityId resolved from membership record — service validates access */
@@ -171,8 +173,11 @@ export class AdminController {
 
   @UseGuards(CommunityAccessGuard)
   @Get('communities/:communityId/announcements')
-  listAnnouncements(@Param('communityId') communityId: string) {
-    return this.adminService.listAnnouncements(communityId);
+  listAnnouncements(
+    @Param('communityId') communityId: string,
+    @Query() query: ListAnnouncementsDto,
+  ) {
+    return this.adminService.listAnnouncements(communityId, query);
   }
 
   // ─── Access Logs ─────────────────────────────────────────────────────────
@@ -181,10 +186,9 @@ export class AdminController {
   @Get('communities/:communityId/access-logs')
   getAccessLogs(
     @Param('communityId') communityId: string,
-    @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
-    @Query('offset', new DefaultValuePipe(0), ParseIntPipe) offset: number,
+    @Query() query: ListAccessLogsDto,
   ) {
-    return this.adminService.getAccessLogs(communityId, limit, offset);
+    return this.adminService.getAccessLogs(communityId, query);
   }
 
   // ─── Policies ────────────────────────────────────────────────────────────
@@ -209,9 +213,9 @@ export class AdminController {
   @Get('communities/:communityId/service-requests')
   listServiceRequests(
     @Param('communityId') communityId: string,
-    @Query('status') status?: string,
+    @Query() query: ListServiceRequestsDto,
   ) {
-    return this.adminService.listServiceRequests(communityId, status);
+    return this.adminService.listServiceRequests(communityId, query);
   }
 
   /** communityId resolved from service request record — service validates access */

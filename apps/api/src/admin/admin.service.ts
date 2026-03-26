@@ -10,11 +10,18 @@ import { UpdateMembershipStatusDto } from './dto/update-membership-status.dto';
 import { CreateScannerDto } from './dto/create-scanner.dto';
 import { CreateAnnouncementDto } from './dto/create-announcement.dto';
 import { UpdatePolicyDto } from './dto/update-policy.dto';
+import { ListMembershipsDto } from './dto/list-memberships.dto';
+import { ListServiceRequestsDto } from './dto/list-service-requests.dto';
+import { ListAnnouncementsDto } from './dto/list-announcements.dto';
+import { ListAccessLogsDto } from './dto/list-access-logs.dto';
+import { paginate } from '../common/dto/pagination.dto';
 import { ApprovalStatus, GlobalRoleType, RelationshipType, RoleType, AnnouncementStatus } from '@simsim/types';
 import {
   ApprovalStatus as PrismaApprovalStatus,
   ServiceRequestStatus as PrismaServiceRequestStatus,
   UserRoleType as PrismaUserRoleType,
+  AnnouncementStatus as PrismaAnnouncementStatus,
+  ScanResult as PrismaScanResult,
 } from '@prisma/client';
 import { randomBytes } from 'crypto';
 import { Twilio } from 'twilio';
@@ -179,18 +186,25 @@ export class AdminService implements OnModuleInit {
 
   // ─── Memberships ───────────────────────────────────────────────────────────
 
-  async listMemberships(communityId: string, status?: string) {
-    return this.prisma.membership.findMany({
-      where: {
-        community_id: communityId,
-        ...(status ? { approval_status: status as PrismaApprovalStatus } : {}),
-      },
-      include: {
-        user: { select: { full_name: true, phone_number: true, profile_photo_url: true, status: true } },
-        unit: { select: { unit_code: true } },
-      },
-      orderBy: { created_at: 'desc' },
-    });
+  async listMemberships(communityId: string, query: ListMembershipsDto) {
+    const where = {
+      community_id: communityId,
+      ...(query.status ? { approval_status: query.status as PrismaApprovalStatus } : {}),
+    };
+    const [data, total] = await Promise.all([
+      this.prisma.membership.findMany({
+        where,
+        include: {
+          user: { select: { full_name: true, phone_number: true, profile_photo_url: true, status: true } },
+          unit: { select: { unit_code: true } },
+        },
+        orderBy: { created_at: 'desc' },
+        take: query.limit,
+        skip: query.offset,
+      }),
+      this.prisma.membership.count({ where }),
+    ]);
+    return paginate(data, total, query);
   }
 
   async updateMembershipStatus(membershipId: string, dto: UpdateMembershipStatusDto, actingUser: any) {
@@ -306,29 +320,43 @@ export class AdminService implements OnModuleInit {
     });
   }
 
-  async listAnnouncements(communityId: string) {
-    return this.prisma.announcement.findMany({
-      where: { community_id: communityId },
-      orderBy: { published_at: 'desc' },
-    });
+  async listAnnouncements(communityId: string, query: ListAnnouncementsDto) {
+    const where = {
+      community_id: communityId,
+      ...(query.status ? { status: query.status as PrismaAnnouncementStatus } : {}),
+    };
+    const [data, total] = await Promise.all([
+      this.prisma.announcement.findMany({
+        where,
+        orderBy: { published_at: 'desc' },
+        take: query.limit,
+        skip: query.offset,
+      }),
+      this.prisma.announcement.count({ where }),
+    ]);
+    return paginate(data, total, query);
   }
 
   // ─── Access Logs ───────────────────────────────────────────────────────────
 
-  async getAccessLogs(communityId: string, limit = 50, offset = 0) {
-    const [logs, total] = await Promise.all([
+  async getAccessLogs(communityId: string, query: ListAccessLogsDto) {
+    const where = {
+      community_id: communityId,
+      ...(query.result ? { result: query.result as PrismaScanResult } : {}),
+    };
+    const [data, total] = await Promise.all([
       this.prisma.accessLog.findMany({
-        where: { community_id: communityId },
+        where,
         orderBy: { scanned_at: 'desc' },
-        take: limit,
-        skip: offset,
+        take: query.limit,
+        skip: query.offset,
         include: {
           scanner: { select: { scanner_name: true } },
         },
       }),
-      this.prisma.accessLog.count({ where: { community_id: communityId } }),
+      this.prisma.accessLog.count({ where }),
     ]);
-    return { logs, total, limit, offset };
+    return paginate(data, total, query);
   }
 
   // ─── Policies ──────────────────────────────────────────────────────────────
@@ -355,17 +383,24 @@ export class AdminService implements OnModuleInit {
 
   // ─── Service Requests ──────────────────────────────────────────────────────
 
-  async listServiceRequests(communityId: string, status?: string) {
-    return this.prisma.serviceRequest.findMany({
-      where: {
-        community_id: communityId,
-        ...(status ? { status: status as PrismaServiceRequestStatus } : {}),
-      },
-      include: {
-        user: { select: { full_name: true, phone_number: true } },
-      },
-      orderBy: { created_at: 'desc' },
-    });
+  async listServiceRequests(communityId: string, query: ListServiceRequestsDto) {
+    const where = {
+      community_id: communityId,
+      ...(query.status ? { status: query.status as PrismaServiceRequestStatus } : {}),
+    };
+    const [data, total] = await Promise.all([
+      this.prisma.serviceRequest.findMany({
+        where,
+        include: {
+          user: { select: { full_name: true, phone_number: true } },
+        },
+        orderBy: { created_at: 'desc' },
+        take: query.limit,
+        skip: query.offset,
+      }),
+      this.prisma.serviceRequest.count({ where }),
+    ]);
+    return paginate(data, total, query);
   }
 
   async updateServiceRequestStatus(requestId: string, status: string, actingUser: any) {

@@ -17,9 +17,10 @@ export default function AnnouncementsPage() {
   const [saving, setSaving] = useState(false);
 
   const communityId = selected || communities?.[0]?.id || null;
-  const { data: items, isLoading } = useFetch<Announcement[]>(
+  const { data: page, isLoading } = useFetch<{ data: Announcement[] }>(
     communityId ? `/admin/communities/${communityId}/announcements` : null
   );
+  const items = page?.data;
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();

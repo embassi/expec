@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell, TableEmpty } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
+import type { PaginatedResponse } from '@simsim/types';
 
 interface Community { id: string; name: string }
 interface Unit { id: string; unit_code: string }
@@ -40,9 +41,10 @@ export default function MembershipsPage() {
 
   const { data: communities } = useFetch<Community[]>('/admin/communities');
   const communityId = selected || communities?.[0]?.id || '';
-  const { data: memberships, isLoading } = useFetch<Membership[]>(
+  const { data: page, isLoading } = useFetch<PaginatedResponse<Membership>>(
     communityId ? `/admin/communities/${communityId}/memberships` : null
   );
+  const memberships = page?.data;
   const { data: units } = useFetch<Unit[]>(
     communityId ? `/admin/communities/${communityId}/units` : null
   );
@@ -50,8 +52,8 @@ export default function MembershipsPage() {
   async function updateStatus(id: string, status: string) {
     const key = `/admin/communities/${communityId}/memberships`;
     setUpdating(id);
-    mutate(key, (current: Membership[] | undefined) =>
-      current?.map(m => m.id === id ? { ...m, approval_status: status } : m),
+    mutate(key, (current: PaginatedResponse<Membership> | undefined) =>
+      current ? { ...current, data: current.data.map(m => m.id === id ? { ...m, approval_status: status } : m) } : current,
       { revalidate: false }
     );
     try {

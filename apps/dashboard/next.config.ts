@@ -14,7 +14,6 @@ export default withSentryConfig(nextConfig, {
   sourcemaps: {
     disable: !process.env.SENTRY_AUTH_TOKEN,
   },
-  // Auto-instrument Next.js API routes and server components
   autoInstrumentServerFunctions: true,
   autoInstrumentMiddleware: true,
 });

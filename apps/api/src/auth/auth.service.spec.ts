@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { HttpException, UnauthorizedException } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { QueueService } from '../queue/queue.service';
 import { createHmac } from 'crypto';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -54,6 +55,11 @@ describe('AuthService', () => {
     sign: jest.fn().mockReturnValue('jwt-token'),
   };
 
+  const mockQueue = {
+    enqueue: jest.fn().mockResolvedValue('job-id'),
+    registerWorker: jest.fn().mockResolvedValue(undefined),
+  };
+
   const mockConfig = {
     get: jest.fn((key: string) => {
       const cfg: Record<string, string> = {
@@ -75,6 +81,7 @@ describe('AuthService', () => {
         { provide: PrismaService, useValue: mockPrisma },
         { provide: JwtService, useValue: mockJwt },
         { provide: ConfigService, useValue: mockConfig },
+        { provide: QueueService, useValue: mockQueue },
       ],
     }).compile();
 

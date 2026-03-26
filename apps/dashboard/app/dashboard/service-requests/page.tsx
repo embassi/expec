@@ -31,9 +31,10 @@ export default function ServiceRequestsPage() {
   const [updating, setUpdating] = useState('');
 
   const communityId = selected || communities?.[0]?.id || null;
-  const { data: requests, isLoading } = useFetch<ServiceRequest[]>(
+  const { data: page, isLoading } = useFetch<{ data: ServiceRequest[] }>(
     communityId ? `/admin/communities/${communityId}/service-requests` : null
   );
+  const requests = page?.data;
 
   async function updateStatus(id: string, status: string) {
     setUpdating(id);
