@@ -33,12 +33,14 @@ model User {
 model OtpVerification {
   id           String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
   phone_number String
-  otp_code     String
+  otp_hash     String   // HMAC-SHA256 hash — plaintext never stored
   expires_at   DateTime
   used         Boolean  @default(false)
+  attempts     Int      @default(0) // failed verification attempts; capped at 5
   created_at   DateTime @default(now())
 
   @@index([phone_number])
+  @@index([phone_number, used, expires_at]) // fast lookup for active OTPs
   @@map("otp_verifications")
 }
 
