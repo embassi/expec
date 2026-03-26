@@ -4,6 +4,7 @@ import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD, APP_FILTER } from '@nestjs/core';
 
 import { PrismaModule } from './prisma/prisma.module';
+import { QueueModule } from './queue/queue.module';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { CommunitiesModule } from './communities/communities.module';
@@ -15,6 +16,7 @@ import { GuestPassesModule } from './guest-passes/guest-passes.module';
 import { AnnouncementsModule } from './announcements/announcements.module';
 import { ServiceRequestsModule } from './service-requests/service-requests.module';
 import { AdminModule } from './admin/admin.module';
+import { StorageModule } from './storage/storage.module';
 
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { AllExceptionsFilter } from './common/filters/http-exception.filter';
@@ -26,6 +28,7 @@ import { AllExceptionsFilter } from './common/filters/http-exception.filter';
       { name: 'short', ttl: 60000, limit: 120 },
     ]),
     PrismaModule,
+    QueueModule,
     AuthModule,
     UsersModule,
     CommunitiesModule,
@@ -37,6 +40,7 @@ import { AllExceptionsFilter } from './common/filters/http-exception.filter';
     AnnouncementsModule,
     ServiceRequestsModule,
     AdminModule,
+    StorageModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },

@@ -1,7 +1,13 @@
 'use client';
 import { useState } from 'react';
+import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import { useFetch, mutate } from '@/lib/hooks';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell, TableEmpty } from '@/components/ui/table';
+import { Skeleton } from '@/components/ui/skeleton';
 
 interface Community { id: string; name: string }
 interface Scanner {
@@ -37,7 +43,10 @@ export default function ScannersPage() {
       setNewScanner(created);
       setShowForm(false);
       setForm({ scanner_name: '', scanner_code: '', location_label: '' });
+      toast.success('Scanner created — save the credentials below');
       mutate(`/admin/communities/${communityId}/scanners`);
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Failed to create scanner');
     } finally {
       setSaving(false);
     }
@@ -45,7 +54,6 @@ export default function ScannersPage() {
 
   async function toggle(id: string) {
     const key = `/admin/communities/${communityId}/scanners`;
-    // Optimistically flip is_active so UI responds instantly
     mutate(key, (current: Scanner[] | undefined) =>
       current?.map(s => s.id === id ? { ...s, is_active: !s.is_active } : s),
       { revalidate: false }
@@ -54,7 +62,8 @@ export default function ScannersPage() {
       await api.patch(`/admin/scanners/${id}/toggle`, {});
       mutate(key);
     } catch {
-      mutate(key); // rollback by revalidating from server
+      mutate(key);
+      toast.error('Failed to toggle scanner');
     }
   }
 
@@ -65,7 +74,10 @@ export default function ScannersPage() {
     try {
       await api.patch(`/admin/scanners/${id}/assign`, { phone_number: phone });
       setAssignPhone(p => ({ ...p, [id]: '' }));
+      toast.success('Scanner assigned');
       mutate(`/admin/communities/${communityId}/scanners`);
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Failed to assign scanner');
     } finally {
       setAssigning(a => ({ ...a, [id]: false }));
     }
@@ -80,9 +92,7 @@ export default function ScannersPage() {
             className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500">
             {(communities || []).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
-          <button onClick={() => setShowForm(true)} className="bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium px-4 py-2 rounded-lg">
-            + Add Scanner
-          </button>
+          <Button onClick={() => setShowForm(true)} size="sm">+ Add Scanner</Button>
         </div>
       </div>
 
@@ -108,16 +118,13 @@ export default function ScannersPage() {
             ].map(({ key, label, required }) => (
               <div key={key}>
                 <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
-                <input value={form[key as keyof typeof form]} onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
-                  required={required}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+                <Input value={form[key as keyof typeof form]} onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
+                  required={required} />
               </div>
             ))}
             <div className="col-span-2 flex gap-2">
-              <button type="submit" disabled={saving} className="bg-brand-600 text-white text-sm px-4 py-2 rounded-lg disabled:opacity-50">
-                {saving ? 'Creating…' : 'Create Scanner'}
-              </button>
-              <button type="button" onClick={() => setShowForm(false)} className="text-sm text-gray-500 px-4 py-2">Cancel</button>
+              <Button type="submit" disabled={saving} size="sm">{saving ? 'Creating…' : 'Create Scanner'}</Button>
+              <Button type="button" variant="ghost" size="sm" onClick={() => setShowForm(false)}>Cancel</Button>
             </div>
           </form>
         </div>
@@ -125,27 +132,34 @@ export default function ScannersPage() {
 
       {scannersError && (
         <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-6 text-sm text-red-700">
-          Failed to load scanners: {scannersError.message}. The database may need a migration — run the <code className="font-mono">ALTER TABLE scanners ADD COLUMN assigned_user_id</code> SQL in Supabase.
+          Failed to load scanners: {scannersError.message}. The database may need a migration.
         </div>
       )}
 
       {isLoading ? (
         <div className="space-y-2">
-          {[1,2,3].map(i => <div key={i} className="h-14 bg-gray-100 rounded-xl animate-pulse" />)}
+          {[1,2,3].map(i => <Skeleton key={i} className="h-14 rounded-xl" />)}
         </div>
       ) : (
         <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b border-gray-200">
-              <tr><Th>Name</Th><Th>Location</Th><Th>Code</Th><Th>Assigned User</Th><Th>Status</Th><Th>Actions</Th></tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Location</TableHead>
+                <TableHead>Code</TableHead>
+                <TableHead>Assigned User</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {(scanners || []).map(s => (
-                <tr key={s.id}>
-                  <td className="px-4 py-3 font-medium">{s.scanner_name}</td>
-                  <td className="px-4 py-3 text-gray-500">{s.location_label || '—'}</td>
-                  <td className="px-4 py-3 font-mono text-xs text-gray-500">{s.scanner_code}</td>
-                  <td className="px-4 py-3">
+                <TableRow key={s.id}>
+                  <TableCell className="font-medium">{s.scanner_name}</TableCell>
+                  <TableCell className="text-gray-500">{s.location_label || '—'}</TableCell>
+                  <TableCell className="font-mono text-xs text-gray-500">{s.scanner_code}</TableCell>
+                  <TableCell>
                     {s.assigned_user ? (
                       <div className="mb-2">
                         <p className="font-medium text-gray-800">{s.assigned_user.full_name || s.assigned_user.phone_number}</p>
@@ -155,44 +169,40 @@ export default function ScannersPage() {
                       <p className="text-gray-400 text-xs mb-2">Unassigned</p>
                     )}
                     <div className="flex gap-1">
-                      <input
+                      <Input
                         value={assignPhone[s.id] || ''}
                         onChange={e => setAssignPhone(p => ({ ...p, [s.id]: e.target.value }))}
                         placeholder="+201234567890"
-                        className="border border-gray-300 rounded px-2 py-1 text-xs w-36 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                        className="h-7 text-xs w-36"
                       />
-                      <button
+                      <Button
+                        variant="ghost"
+                        size="sm"
                         onClick={() => assignScanner(s.id)}
                         disabled={assigning[s.id] || !(assignPhone[s.id] || '').trim()}
-                        className="text-xs bg-brand-50 text-brand-700 hover:bg-brand-100 px-2 py-1 rounded font-medium disabled:opacity-50"
+                        className="h-7 px-2 text-xs text-brand-700 hover:bg-brand-50"
                       >
                         {assigning[s.id] ? '…' : 'Assign'}
-                      </button>
+                      </Button>
                     </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className={`text-xs font-medium px-2 py-1 rounded-full ${s.is_active ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
-                      {s.is_active ? 'Active' : 'Inactive'}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={s.is_active ? 'success' : 'muted'}>{s.is_active ? 'Active' : 'Inactive'}</Badge>
+                  </TableCell>
+                  <TableCell>
                     <button onClick={() => toggle(s.id)} className="text-xs text-brand-600 hover:underline">
                       {s.is_active ? 'Disable' : 'Enable'}
                     </button>
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               ))}
               {!isLoading && (scanners || []).length === 0 && !scannersError && (
-                <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400">No scanners yet</td></tr>
+                <TableEmpty colSpan={6}>No scanners yet</TableEmpty>
               )}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
       )}
     </div>
   );
-}
-
-function Th({ children }: { children: React.ReactNode }) {
-  return <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">{children}</th>;
 }

@@ -2,6 +2,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
+import * as Sentry from '@sentry/nestjs';
+import { ScanResult as PrismaScanResult, ScanType as PrismaScanType } from '@prisma/client';
 import {
   ScanResult,
   ScanType,
@@ -141,15 +143,23 @@ export class ScannerService {
     if (now < pass.valid_from || now > pass.valid_until) {
       return this.deny(scanner, ScanType.Guest, 'Pass is outside its valid time window');
     }
-    if (pass.usage_count >= pass.usage_limit) {
-      return this.deny(scanner, ScanType.Guest, 'Pass usage limit reached');
-    }
 
-    // 6. Increment usage count
-    await this.prisma.guestPass.update({
-      where: { id: pass.id },
+    // 6. Atomically increment usage — WHERE guard prevents over-consumption under concurrency.
+    //    A single SQL UPDATE ... WHERE usage_count < usage_limit handles the check+increment
+    //    atomically, so two simultaneous scans cannot both succeed when at the limit.
+    const incremented = await this.prisma.guestPass.updateMany({
+      where: {
+        id: pass.id,
+        usage_count: { lt: pass.usage_limit },
+        status: PassStatus.Active,
+        qr_token_version: payload.v, // re-validate version atomically
+      },
       data: { usage_count: { increment: 1 } },
     });
+
+    if (incremented.count === 0) {
+      return this.deny(scanner, ScanType.Guest, 'Pass usage limit reached');
+    }
 
     // 7. Log
     await this.writeLog({
@@ -201,7 +211,7 @@ export class ScannerService {
     community_id: string;
     scanner_id: string;
     scanner_code: string;
-    scan_type: string;
+    scan_type: PrismaScanType;
     user_id?: string;
     membership_id?: string;
     guest_pass_id?: string;
@@ -209,13 +219,14 @@ export class ScannerService {
     resident_phone?: string;
     unit_id?: string;
     unit_code?: string;
-    result: string;
+    result: PrismaScanResult;
     denial_reason?: string;
   }) {
     try {
       await this.prisma.accessLog.create({ data });
     } catch (err) {
       this.logger.error('Failed to write access log', err);
+      Sentry.captureException(err, { tags: { event: 'access_log_write_failed' } });
     }
   }
 }

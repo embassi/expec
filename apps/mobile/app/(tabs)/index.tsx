@@ -1,101 +1,91 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
-  AppState,
-  AppStateStatus,
   ActivityIndicator,
 } from 'react-native';
+import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
+import { useQuery } from '@tanstack/react-query';
 import { api } from '../../lib/api';
-import { getSession } from '../../lib/auth';
 import { Colors } from '../../lib/colors';
 import { QrCode } from '../../components/QrCode';
 
 const REFRESH_INTERVAL = 25;
 
 export default function QrScreen() {
-  const [token, setToken] = useState<string | null>(null);
+  const { data: me } = useQuery({
+    queryKey: ['me'],
+    queryFn: () => api.get<{ full_name: string | null }>('/me'),
+    staleTime: 60_000,
+  });
+
+  const { data, isLoading, error, dataUpdatedAt, refetch } = useQuery({
+    queryKey: ['qr-token'],
+    queryFn: () => api.get<{ qr_token: string }>('/access/qr'),
+    refetchInterval: REFRESH_INTERVAL * 1000,
+    staleTime: 0,
+    gcTime: 0,
+  });
+
   const [countdown, setCountdown] = useState(REFRESH_INTERVAL);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [userName, setUserName] = useState('');
-
-  const refreshTimer = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
-  const countdownTimer = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
-
-  const fetchToken = useCallback(async () => {
-    try {
-      const { qr_token: t } = await api.get<{ qr_token: string }>('/access/qr');
-      setToken(t);
-      setCountdown(REFRESH_INTERVAL);
-      setError('');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load QR');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  function startTimers() {
-    clearInterval(refreshTimer.current);
-    clearInterval(countdownTimer.current);
-    refreshTimer.current = setInterval(fetchToken, REFRESH_INTERVAL * 1000);
-    countdownTimer.current = setInterval(() => {
-      setCountdown(c => (c > 0 ? c - 1 : 0));
-    }, 1000);
-  }
 
   useEffect(() => {
-    getSession().then(s => {
-      if (s?.user?.full_name) setUserName(s.user.full_name);
-    });
-    fetchToken();
-    startTimers();
-
-    const sub = AppState.addEventListener('change', (state: AppStateStatus) => {
-      if (state === 'active') {
-        fetchToken();
-        startTimers();
-      }
-    });
-
-    return () => {
-      clearInterval(refreshTimer.current);
-      clearInterval(countdownTimer.current);
-      sub.remove();
+    if (!dataUpdatedAt) return;
+    const update = () => {
+      const elapsed = Math.floor((Date.now() - dataUpdatedAt) / 1000);
+      setCountdown(Math.max(0, REFRESH_INTERVAL - elapsed));
     };
-  }, []);
+    update();
+    const timer = setInterval(update, 1000);
+    return () => clearInterval(timer);
+  }, [dataUpdatedAt]);
+
+  const token = data?.qr_token ?? null;
+  const errorMsg = error instanceof Error ? error.message : error ? 'Failed to load QR' : '';
 
   return (
     <View style={styles.container}>
-      <View style={styles.card}>
-        {userName ? <Text style={styles.name}>{userName}</Text> : null}
+      <Animated.View entering={FadeIn.duration(300)} style={styles.card}>
+        {me?.full_name ? (
+          <Text style={styles.name}>{me.full_name}</Text>
+        ) : null}
         <Text style={styles.subtitle}>Show this QR code at the gate</Text>
 
         <View style={styles.qrContainer}>
-          {loading ? (
+          {isLoading ? (
             <ActivityIndicator size="large" color={Colors.primary} />
-          ) : error ? (
-            <View style={styles.errorBox}>
-              <Text style={styles.errorText}>{error}</Text>
-              <TouchableOpacity style={styles.retryButton} onPress={fetchToken}>
+          ) : errorMsg ? (
+            <Animated.View entering={FadeIn.duration(200)} style={styles.errorBox}>
+              <Text style={styles.errorText}>{errorMsg}</Text>
+              <TouchableOpacity style={styles.retryButton} onPress={() => refetch()}>
                 <Text style={styles.retryText}>Retry</Text>
               </TouchableOpacity>
-            </View>
+            </Animated.View>
           ) : token ? (
-            <QrCode token={token} size={220} />
+            <Animated.View
+              key={token}
+              entering={FadeIn.duration(200)}
+              exiting={FadeOut.duration(150)}
+            >
+              <QrCode token={token} size={220} />
+            </Animated.View>
           ) : null}
         </View>
 
-        {!error && !loading && (
+        {!errorMsg && !isLoading && (
           <View style={styles.countdownRow}>
-            <View style={[styles.countdownBar, { width: `${(countdown / REFRESH_INTERVAL) * 100}%` }]} />
+            <View
+              style={[
+                styles.countdownBar,
+                { width: `${(countdown / REFRESH_INTERVAL) * 100}%` },
+              ]}
+            />
             <Text style={styles.countdownText}>Refreshes in {countdown}s</Text>
           </View>
         )}
-      </View>
+      </Animated.View>
     </View>
   );
 }

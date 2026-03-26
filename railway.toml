@@ -1,7 +1,9 @@
 [build]
 builder = "nixpacks"
-buildCommand = "pnpm install && pnpm --filter api build"
+buildCommand = "pnpm install && pnpm --filter api prisma:generate && pnpm --filter api build"
 
 [deploy]
-startCommand = "node dist/main"
+# Run pending migrations before starting the server.
+# Uses DIRECT_URL (non-pooled) so Prisma DDL statements work through PgBouncer-free connection.
+startCommand = "pnpm --filter api prisma:deploy && node dist/main"
 restartPolicyType = "on_failure"

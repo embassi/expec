@@ -1,5 +1,6 @@
 import {
   Injectable,
+  OnModuleInit,
   NotFoundException,
   ForbiddenException,
   BadRequestException,
@@ -8,6 +9,9 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
+import { QueueService, QUEUE_JOBS } from '../queue/queue.service';
+import { SendGuestPassJobData } from '../queue/job-types';
+import * as Sentry from '@sentry/nestjs';
 import { CreateGuestPassDto } from './dto/create-guest-pass.dto';
 import {
   PassType,
@@ -16,10 +20,11 @@ import {
   RelationshipType,
   GuestPassQrPayload,
 } from '@simsim/types';
+import { Prisma } from '@prisma/client';
 import { Twilio } from 'twilio';
 
 @Injectable()
-export class GuestPassesService {
+export class GuestPassesService implements OnModuleInit {
   private readonly logger = new Logger(GuestPassesService.name);
   private twilioClient: Twilio;
 
@@ -27,10 +32,23 @@ export class GuestPassesService {
     private prisma: PrismaService,
     private jwtService: JwtService,
     private config: ConfigService,
+    private queue: QueueService,
   ) {
     this.twilioClient = new Twilio(
       this.config.get('TWILIO_ACCOUNT_SID'),
       this.config.get('TWILIO_AUTH_TOKEN'),
+    );
+  }
+
+  async onModuleInit() {
+    await this.queue.registerWorker<SendGuestPassJobData>(
+      QUEUE_JOBS.SEND_GUEST_PASS,
+      async (jobs) => {
+        for (const job of jobs) {
+          const { guestPhone, guestName, passUrl, passType } = job.data;
+          await this.sendPassLink(guestPhone, guestName, passUrl, passType as PassType);
+        }
+      },
     );
   }
 
@@ -51,38 +69,49 @@ export class GuestPassesService {
     const policy = await this.getOrCreatePolicy(dto.community_id);
     this.assertCanGeneratePass(membership.relationship_type, policy);
 
-    // Check daily and active limits
-    await this.checkLimits(userId, dto.community_id, policy);
-
     // Get duration & usage from policy
     const { durationHours, usageLimit } = this.getPassDefaults(dto.pass_type, policy);
 
     const now = new Date();
     const validUntil = new Date(now.getTime() + durationHours * 60 * 60 * 1000);
 
-    const pass = await this.prisma.guestPass.create({
-      data: {
-        community_id: dto.community_id,
-        host_user_id: userId,
-        host_membership_id: membership.id,
-        guest_name: dto.guest_name,
-        guest_phone: dto.guest_phone,
-        pass_type: dto.pass_type,
-        status: PassStatus.Active,
-        valid_from: now,
-        valid_until: validUntil,
-        usage_limit: usageLimit,
-        usage_count: 0,
-        qr_token_version: 1,
+    // Wrap limit check + create in a serializable transaction to prevent
+    // two concurrent requests both passing the limit check and both creating passes.
+    const pass = await this.prisma.$transaction(
+      async (tx) => {
+        await this.checkLimits(userId, dto.community_id, policy, tx);
+
+        return tx.guestPass.create({
+          data: {
+            community_id: dto.community_id,
+            host_user_id: userId,
+            host_membership_id: membership.id,
+            guest_name: dto.guest_name,
+            guest_phone: dto.guest_phone,
+            pass_type: dto.pass_type,
+            status: PassStatus.Active,
+            valid_from: now,
+            valid_until: validUntil,
+            usage_limit: usageLimit,
+            usage_count: 0,
+            qr_token_version: 1,
+          },
+        });
       },
-    });
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
 
     // Generate signed pass token (no expiry — the pass itself carries validity)
     const passToken = this.generatePassToken(pass.id, pass.qr_token_version);
     const passUrl = `${this.config.get('APP_BASE_URL')}/pass/${passToken}`;
 
-    // Send via WhatsApp
-    await this.sendPassLink(dto.guest_phone, dto.guest_name, passUrl, dto.pass_type);
+    // Enqueue WhatsApp send — async with up to 3 retries; pass is already persisted
+    await this.queue.enqueue<SendGuestPassJobData>(QUEUE_JOBS.SEND_GUEST_PASS, {
+      guestPhone: dto.guest_phone,
+      guestName: dto.guest_name,
+      passUrl,
+      passType: dto.pass_type,
+    });
 
     return {
       id: pass.id,
@@ -214,12 +243,18 @@ export class GuestPassesService {
     }
   }
 
-  private async checkLimits(userId: string, communityId: string, policy: any) {
+  private async checkLimits(
+    userId: string,
+    communityId: string,
+    policy: any,
+    tx?: Prisma.TransactionClient,
+  ) {
+    const db = tx ?? this.prisma;
     const now = new Date();
     const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
     const [activeCount, todayCount] = await Promise.all([
-      this.prisma.guestPass.count({
+      db.guestPass.count({
         where: {
           host_user_id: userId,
           community_id: communityId,
@@ -227,7 +262,7 @@ export class GuestPassesService {
           valid_until: { gt: now },
         },
       }),
-      this.prisma.guestPass.count({
+      db.guestPass.count({
         where: {
           host_user_id: userId,
           community_id: communityId,
@@ -266,7 +301,8 @@ export class GuestPassesService {
       await this.twilioClient.messages.create({ from, to, body });
     } catch (err) {
       this.logger.error(`Failed to send pass link to ${guestPhone}`, err);
-      // Don't throw — pass is already created, link can be shared manually
+      Sentry.captureException(err, { tags: { event: 'guest_pass_send_failed' } });
+      throw err; // re-throw so pg-boss retries the job
     }
   }
 }

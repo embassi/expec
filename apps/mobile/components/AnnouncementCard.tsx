@@ -1,25 +1,20 @@
 import { View, Text, StyleSheet, Image } from 'react-native';
+import type { ApiAnnouncement } from '@simsim/types';
 import { Colors } from '../lib/colors';
 
-interface Announcement {
-  id: string;
-  title: string;
-  body: string;
-  image_url: string | null;
-  published_at: string | null;
-  created_at: string;
-}
-
 interface Props {
-  announcement: Announcement;
+  announcement: ApiAnnouncement;
 }
 
 export function AnnouncementCard({ announcement: a }: Props) {
-  const date = new Date(a.published_at ?? a.created_at).toLocaleDateString(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  });
+  const dateStr = a.published_at ?? a.created_at;
+  const date = dateStr
+    ? new Date(dateStr).toLocaleDateString(undefined, {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+      })
+    : '';
 
   return (
     <View style={styles.card}>
@@ -27,9 +22,9 @@ export function AnnouncementCard({ announcement: a }: Props) {
         <Image source={{ uri: a.image_url }} style={styles.image} resizeMode="cover" />
       )}
       <View style={styles.content}>
-        <Text style={styles.title}>{a.title}</Text>
-        <Text style={styles.body}>{a.body}</Text>
-        <Text style={styles.date}>{date}</Text>
+        {a.title ? <Text style={styles.title}>{a.title}</Text> : null}
+        {a.body ? <Text style={styles.body}>{a.body}</Text> : null}
+        {date ? <Text style={styles.date}>{date}</Text> : null}
       </View>
     </View>
   );

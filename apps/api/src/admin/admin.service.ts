@@ -1,6 +1,8 @@
-import { Injectable, NotFoundException, ConflictException, Logger } from '@nestjs/common';
+import { Injectable, OnModuleInit, NotFoundException, ConflictException, ForbiddenException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
+import { QueueService, QUEUE_JOBS } from '../queue/queue.service';
+import { SendWelcomeJobData } from '../queue/job-types';
 import { CreateCommunityDto } from './dto/create-community.dto';
 import { CreateUnitDto } from './dto/create-unit.dto';
 import { AssignOwnerDto } from './dto/assign-owner.dto';
@@ -8,23 +10,77 @@ import { UpdateMembershipStatusDto } from './dto/update-membership-status.dto';
 import { CreateScannerDto } from './dto/create-scanner.dto';
 import { CreateAnnouncementDto } from './dto/create-announcement.dto';
 import { UpdatePolicyDto } from './dto/update-policy.dto';
-import { ApprovalStatus, RelationshipType, RoleType, AnnouncementStatus } from '@simsim/types';
+import { ListMembershipsDto } from './dto/list-memberships.dto';
+import { ListServiceRequestsDto } from './dto/list-service-requests.dto';
+import { ListAnnouncementsDto } from './dto/list-announcements.dto';
+import { ListAccessLogsDto } from './dto/list-access-logs.dto';
+import { paginate } from '../common/dto/pagination.dto';
+import { ApprovalStatus, GlobalRoleType, RelationshipType, RoleType, AnnouncementStatus } from '@simsim/types';
+import {
+  ApprovalStatus as PrismaApprovalStatus,
+  ServiceRequestStatus as PrismaServiceRequestStatus,
+  UserRoleType as PrismaUserRoleType,
+  AnnouncementStatus as PrismaAnnouncementStatus,
+  ScanResult as PrismaScanResult,
+} from '@prisma/client';
 import { randomBytes } from 'crypto';
 import { Twilio } from 'twilio';
 
 @Injectable()
-export class AdminService {
+export class AdminService implements OnModuleInit {
   private readonly logger = new Logger(AdminService.name);
   private twilioClient: Twilio;
 
   constructor(
     private prisma: PrismaService,
     private config: ConfigService,
+    private queue: QueueService,
   ) {
     this.twilioClient = new Twilio(
       this.config.get('TWILIO_ACCOUNT_SID'),
       this.config.get('TWILIO_AUTH_TOKEN'),
     );
+  }
+
+  async onModuleInit() {
+    await this.queue.registerWorker<SendWelcomeJobData>(
+      QUEUE_JOBS.SEND_WELCOME,
+      async (jobs) => {
+        for (const job of jobs) {
+          await this.sendWelcomeMessage(job.data.phoneNumber, job.data.communityName);
+        }
+      },
+    );
+  }
+
+  // ─── Authorization helper ──────────────────────────────────────────────────
+
+  /**
+   * Asserts that the acting user has an approved admin or manager membership
+   * in the given community. Super admins always pass.
+   * Used for routes where communityId must be resolved from a resource record.
+   */
+  private assertCommunityAccess(
+    user: any,
+    communityId: string,
+    requireAdmin = false,
+  ): void {
+    if (user.role_type === GlobalRoleType.SuperAdmin) return;
+
+    const allowedRoles: string[] = requireAdmin
+      ? [RoleType.CommunityAdmin]
+      : [RoleType.CommunityAdmin, RoleType.CommunityManager, RoleType.Manager];
+
+    const hasAccess = user.memberships?.some(
+      (m: { community_id: string; role_type: string; approval_status: string }) =>
+        m.community_id === communityId &&
+        allowedRoles.includes(m.role_type) &&
+        m.approval_status === 'approved',
+    );
+
+    if (!hasAccess) {
+      throw new ForbiddenException('Access denied to this community');
+    }
   }
 
   // ─── Communities ───────────────────────────────────────────────────────────
@@ -119,33 +175,43 @@ export class AdminService {
       },
     });
 
-    // Send WhatsApp welcome message (fire-and-forget)
-    this.sendWelcomeMessage(dto.phone_number, community.name).catch(err =>
-      this.logger.warn(`Failed to send welcome WhatsApp to ${dto.phone_number}: ${err.message}`),
-    );
+    // Enqueue WhatsApp welcome message — async with up to 3 retries
+    await this.queue.enqueue<SendWelcomeJobData>(QUEUE_JOBS.SEND_WELCOME, {
+      phoneNumber: dto.phone_number,
+      communityName: community.name,
+    });
 
     return membership;
   }
 
   // ─── Memberships ───────────────────────────────────────────────────────────
 
-  async listMemberships(communityId: string, status?: string) {
-    return this.prisma.membership.findMany({
-      where: {
-        community_id: communityId,
-        ...(status ? { approval_status: status } : {}),
-      },
-      include: {
-        user: { select: { full_name: true, phone_number: true, profile_photo_url: true, status: true } },
-        unit: { select: { unit_code: true } },
-      },
-      orderBy: { created_at: 'desc' },
-    });
+  async listMemberships(communityId: string, query: ListMembershipsDto) {
+    const where = {
+      community_id: communityId,
+      ...(query.status ? { approval_status: query.status as PrismaApprovalStatus } : {}),
+    };
+    const [data, total] = await Promise.all([
+      this.prisma.membership.findMany({
+        where,
+        include: {
+          user: { select: { full_name: true, phone_number: true, profile_photo_url: true, status: true } },
+          unit: { select: { unit_code: true } },
+        },
+        orderBy: { created_at: 'desc' },
+        take: query.limit,
+        skip: query.offset,
+      }),
+      this.prisma.membership.count({ where }),
+    ]);
+    return paginate(data, total, query);
   }
 
-  async updateMembershipStatus(membershipId: string, dto: UpdateMembershipStatusDto) {
+  async updateMembershipStatus(membershipId: string, dto: UpdateMembershipStatusDto, actingUser: any) {
     const membership = await this.prisma.membership.findUnique({ where: { id: membershipId } });
     if (!membership) throw new NotFoundException('Membership not found');
+
+    this.assertCommunityAccess(actingUser, membership.community_id);
 
     return this.prisma.membership.update({
       where: { id: membershipId },
@@ -192,7 +258,12 @@ export class AdminService {
     });
   }
 
-  async assignScanner(scannerId: string, phoneNumber: string | null) {
+  async assignScanner(scannerId: string, phoneNumber: string | null, actingUser: any) {
+    const scanner = await this.prisma.scanner.findUnique({ where: { id: scannerId } });
+    if (!scanner) throw new NotFoundException('Scanner not found');
+
+    this.assertCommunityAccess(actingUser, scanner.community_id, true);
+
     if (phoneNumber === null) {
       return this.prisma.scanner.update({
         where: { id: scannerId },
@@ -209,8 +280,12 @@ export class AdminService {
     });
   }
 
-  async toggleScanner(scannerId: string) {
-    const scanner = await this.prisma.scanner.findUniqueOrThrow({ where: { id: scannerId } });
+  async toggleScanner(scannerId: string, actingUser: any) {
+    const scanner = await this.prisma.scanner.findUnique({ where: { id: scannerId } });
+    if (!scanner) throw new NotFoundException('Scanner not found');
+
+    this.assertCommunityAccess(actingUser, scanner.community_id);
+
     return this.prisma.scanner.update({
       where: { id: scannerId },
       data: { is_active: !scanner.is_active },
@@ -245,29 +320,43 @@ export class AdminService {
     });
   }
 
-  async listAnnouncements(communityId: string) {
-    return this.prisma.announcement.findMany({
-      where: { community_id: communityId },
-      orderBy: { published_at: 'desc' },
-    });
+  async listAnnouncements(communityId: string, query: ListAnnouncementsDto) {
+    const where = {
+      community_id: communityId,
+      ...(query.status ? { status: query.status as PrismaAnnouncementStatus } : {}),
+    };
+    const [data, total] = await Promise.all([
+      this.prisma.announcement.findMany({
+        where,
+        orderBy: { published_at: 'desc' },
+        take: query.limit,
+        skip: query.offset,
+      }),
+      this.prisma.announcement.count({ where }),
+    ]);
+    return paginate(data, total, query);
   }
 
   // ─── Access Logs ───────────────────────────────────────────────────────────
 
-  async getAccessLogs(communityId: string, limit = 50, offset = 0) {
-    const [logs, total] = await Promise.all([
+  async getAccessLogs(communityId: string, query: ListAccessLogsDto) {
+    const where = {
+      community_id: communityId,
+      ...(query.result ? { result: query.result as PrismaScanResult } : {}),
+    };
+    const [data, total] = await Promise.all([
       this.prisma.accessLog.findMany({
-        where: { community_id: communityId },
+        where,
         orderBy: { scanned_at: 'desc' },
-        take: limit,
-        skip: offset,
+        take: query.limit,
+        skip: query.offset,
         include: {
           scanner: { select: { scanner_name: true } },
         },
       }),
-      this.prisma.accessLog.count({ where: { community_id: communityId } }),
+      this.prisma.accessLog.count({ where }),
     ]);
-    return { logs, total, limit, offset };
+    return paginate(data, total, query);
   }
 
   // ─── Policies ──────────────────────────────────────────────────────────────
@@ -294,23 +383,35 @@ export class AdminService {
 
   // ─── Service Requests ──────────────────────────────────────────────────────
 
-  async listServiceRequests(communityId: string, status?: string) {
-    return this.prisma.serviceRequest.findMany({
-      where: {
-        community_id: communityId,
-        ...(status ? { status } : {}),
-      },
-      include: {
-        user: { select: { full_name: true, phone_number: true } },
-      },
-      orderBy: { created_at: 'desc' },
-    });
+  async listServiceRequests(communityId: string, query: ListServiceRequestsDto) {
+    const where = {
+      community_id: communityId,
+      ...(query.status ? { status: query.status as PrismaServiceRequestStatus } : {}),
+    };
+    const [data, total] = await Promise.all([
+      this.prisma.serviceRequest.findMany({
+        where,
+        include: {
+          user: { select: { full_name: true, phone_number: true } },
+        },
+        orderBy: { created_at: 'desc' },
+        take: query.limit,
+        skip: query.offset,
+      }),
+      this.prisma.serviceRequest.count({ where }),
+    ]);
+    return paginate(data, total, query);
   }
 
-  async updateServiceRequestStatus(requestId: string, status: string) {
+  async updateServiceRequestStatus(requestId: string, status: string, actingUser: any) {
+    const request = await this.prisma.serviceRequest.findUnique({ where: { id: requestId } });
+    if (!request) throw new NotFoundException('Service request not found');
+
+    this.assertCommunityAccess(actingUser, request.community_id);
+
     return this.prisma.serviceRequest.update({
       where: { id: requestId },
-      data: { status },
+      data: { status: status as PrismaServiceRequestStatus },
     });
   }
 
@@ -344,10 +445,11 @@ export class AdminService {
       },
     });
 
-    // Send WhatsApp welcome message (fire-and-forget)
-    this.sendWelcomeMessage(phoneNumber, community.name).catch(err =>
-      this.logger.warn(`Failed to send welcome WhatsApp to ${phoneNumber}: ${err.message}`),
-    );
+    // Enqueue WhatsApp welcome message — async with up to 3 retries
+    await this.queue.enqueue<SendWelcomeJobData>(QUEUE_JOBS.SEND_WELCOME, {
+      phoneNumber,
+      communityName: community.name,
+    });
 
     return membership;
   }
@@ -380,10 +482,10 @@ export class AdminService {
   async updateUserRole(userId: string, roleType: string) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');
-    return this.prisma.user.update({ where: { id: userId }, data: { role_type: roleType } });
+    return this.prisma.user.update({ where: { id: userId }, data: { role_type: roleType as PrismaUserRoleType } });
   }
 
-  async resendInvite(membershipId: string) {
+  async resendInvite(membershipId: string, actingUser: any) {
     const membership = await this.prisma.membership.findUnique({
       where: { id: membershipId },
       include: {
@@ -393,7 +495,12 @@ export class AdminService {
     });
     if (!membership) throw new NotFoundException('Membership not found');
 
-    await this.sendWelcomeMessage(membership.user.phone_number, membership.community.name);
+    this.assertCommunityAccess(actingUser, membership.community_id);
+
+    await this.queue.enqueue<SendWelcomeJobData>(QUEUE_JOBS.SEND_WELCOME, {
+      phoneNumber: membership.user.phone_number,
+      communityName: membership.community.name,
+    });
     return { message: 'Invite resent' };
   }
 

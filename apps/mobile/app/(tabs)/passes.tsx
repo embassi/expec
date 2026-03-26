@@ -1,4 +1,3 @@
-import { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -8,64 +7,34 @@ import {
   ActivityIndicator,
   RefreshControl,
 } from 'react-native';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
+import type { ApiGuestPass, ApiCommunity } from '@simsim/types';
 import { api } from '../../lib/api';
 import { Colors } from '../../lib/colors';
 import { PassCard } from '../../components/PassCard';
 import { CreatePassModal } from '../../components/CreatePassModal';
 
-interface Community {
-  id: string;
-  name: string;
-}
-
-interface GuestPass {
-  id: string;
-  guest_name: string;
-  guest_phone: string;
-  pass_type: string;
-  status: string;
-  valid_from: string | null;
-  valid_until: string | null;
-  usage_limit: number | null;
-  usage_count: number;
-  created_at: string;
-}
-
 export default function PassesScreen() {
-  const [passes, setPasses] = useState<GuestPass[]>([]);
-  const [communities, setCommunities] = useState<Community[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const queryClient = useQueryClient();
   const [showModal, setShowModal] = useState(false);
 
-  async function load() {
-    try {
-      const [p, c] = await Promise.all([
-        api.get<GuestPass[]>('/guest-passes/my'),
-        api.get<Community[]>('/communities/my'),
-      ]);
-      setPasses(p);
-      setCommunities(c);
-    } catch {
-      // silently fail
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }
+  const { data: passes = [], isLoading, isFetching, refetch } = useQuery({
+    queryKey: ['passes'],
+    queryFn: () => api.get<ApiGuestPass[]>('/guest-passes/my'),
+  });
 
-  useEffect(() => { load(); }, []);
+  const { data: communities = [] } = useQuery({
+    queryKey: ['communities'],
+    queryFn: () => api.get<ApiCommunity[]>('/communities/my'),
+  });
 
-  async function handleCancel(id: string) {
-    try {
-      await api.delete(`/guest-passes/${id}`);
-      setPasses(prev => prev.filter(p => p.id !== id));
-    } catch {
-      // silently fail
-    }
-  }
+  const cancelMutation = useMutation({
+    mutationFn: (id: string) => api.delete(`/guest-passes/${id}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['passes'] }),
+  });
 
-  if (loading) {
+  if (isLoading) {
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" color={Colors.primary} />
@@ -81,8 +50,8 @@ export default function PassesScreen() {
         keyExtractor={p => p.id}
         refreshControl={
           <RefreshControl
-            refreshing={refreshing}
-            onRefresh={() => { setRefreshing(true); load(); }}
+            refreshing={isFetching && !isLoading}
+            onRefresh={refetch}
             tintColor={Colors.primary}
           />
         }
@@ -90,7 +59,7 @@ export default function PassesScreen() {
           <Text style={styles.empty}>No guest passes yet.{'\n'}Tap + to create one.</Text>
         }
         renderItem={({ item }) => (
-          <PassCard pass={item} onCancel={() => handleCancel(item.id)} />
+          <PassCard pass={item} onCancel={() => cancelMutation.mutate(item.id)} />
         )}
       />
 
@@ -102,8 +71,8 @@ export default function PassesScreen() {
         visible={showModal}
         communities={communities}
         onClose={() => setShowModal(false)}
-        onCreated={pass => {
-          setPasses(prev => [pass as GuestPass, ...prev]);
+        onCreated={() => {
+          queryClient.invalidateQueries({ queryKey: ['passes'] });
           setShowModal(false);
         }}
       />

@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
-import { saveSession, SessionUser } from '@/lib/auth';
+import { SessionUser } from '@/lib/auth';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -17,6 +17,7 @@ export default function LoginPage() {
     setError('');
     setLoading(true);
     try {
+      // Proxied through /api/proxy → backend /auth/request-otp (no auth required)
       await api.post('/auth/request-otp', { phone_number: phone });
       setStep('otp');
     } catch (err: unknown) {
@@ -31,11 +32,20 @@ export default function LoginPage() {
     setError('');
     setLoading(true);
     try {
-      const res = await api.post<{ access_token: string; user: SessionUser }>(
-        '/auth/verify-otp',
-        { phone_number: phone, otp }
-      );
-      saveSession(res.access_token, res.user);
+      // BFF login route: calls backend, sets HttpOnly cookie, returns user (not token)
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ phone_number: phone, otp }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ message: 'Invalid OTP' }));
+        throw new Error(err.message ?? 'Invalid OTP');
+      }
+
+      // Cookie is now set server-side — no token in JS
       router.replace('/dashboard');
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Invalid OTP');

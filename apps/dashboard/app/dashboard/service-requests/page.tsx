@@ -1,7 +1,10 @@
 'use client';
 import { useState } from 'react';
+import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import { useFetch, mutate } from '@/lib/hooks';
+import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
 
 interface Community { id: string; name: string }
 interface ServiceRequest {
@@ -15,21 +18,32 @@ interface ServiceRequest {
 
 const STATUSES = ['open', 'in_progress', 'resolved', 'closed'];
 
+const STATUS_VARIANT: Record<string, 'default' | 'warning' | 'success' | 'muted'> = {
+  open: 'default',
+  in_progress: 'warning',
+  resolved: 'success',
+  closed: 'muted',
+};
+
 export default function ServiceRequestsPage() {
   const { data: communities } = useFetch<Community[]>('/admin/communities');
   const [selected, setSelected] = useState('');
   const [updating, setUpdating] = useState('');
 
   const communityId = selected || communities?.[0]?.id || null;
-  const { data: requests, isLoading } = useFetch<ServiceRequest[]>(
+  const { data: page, isLoading } = useFetch<{ data: ServiceRequest[] }>(
     communityId ? `/admin/communities/${communityId}/service-requests` : null
   );
+  const requests = page?.data;
 
   async function updateStatus(id: string, status: string) {
     setUpdating(id);
     try {
       await api.patch(`/admin/service-requests/${id}/status`, { status });
+      toast.success('Status updated');
       mutate(`/admin/communities/${communityId}/service-requests`);
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Failed to update status');
     } finally {
       setUpdating('');
     }
@@ -45,7 +59,11 @@ export default function ServiceRequestsPage() {
         </select>
       </div>
 
-      {isLoading ? <p className="text-gray-400 text-sm">Loading…</p> : (
+      {isLoading ? (
+        <div className="space-y-3">
+          {[1, 2, 3].map(i => <Skeleton key={i} className="h-24 rounded-xl" />)}
+        </div>
+      ) : (
         <div className="space-y-3">
           {requests?.map(r => (
             <div key={r.id} className="bg-white border border-gray-200 rounded-xl p-5">
@@ -56,12 +74,12 @@ export default function ServiceRequestsPage() {
                   <p className="text-sm text-gray-600 mt-2">{r.description}</p>
                 </div>
                 <div className="flex flex-col items-end gap-2">
-                  <StatusBadge status={r.status} />
+                  <Badge variant={STATUS_VARIANT[r.status] ?? 'muted'}>{r.status.replace('_', ' ')}</Badge>
                   <select
                     value={r.status}
                     disabled={updating === r.id}
                     onChange={e => updateStatus(r.id, e.target.value)}
-                    className="text-xs border border-gray-200 rounded-lg px-2 py-1 focus:outline-none"
+                    className="text-xs border border-gray-200 rounded-lg px-2 py-1 focus:outline-none disabled:opacity-50"
                   >
                     {STATUSES.map(s => <option key={s} value={s}>{s.replace('_', ' ')}</option>)}
                   </select>
@@ -75,14 +93,4 @@ export default function ServiceRequestsPage() {
       )}
     </div>
   );
-}
-
-function StatusBadge({ status }: { status: string }) {
-  const styles: Record<string, string> = {
-    open: 'bg-blue-50 text-blue-700',
-    in_progress: 'bg-yellow-50 text-yellow-700',
-    resolved: 'bg-green-50 text-green-700',
-    closed: 'bg-gray-100 text-gray-500',
-  };
-  return <span className={`text-xs font-medium px-2 py-1 rounded-full ${styles[status] ?? 'bg-gray-100 text-gray-500'}`}>{status.replace('_', ' ')}</span>;
 }

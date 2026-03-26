@@ -1,14 +1,21 @@
-import { ExceptionFilter, Catch, ArgumentsHost, HttpException, HttpStatus } from '@nestjs/common';
+import {
+  ExceptionFilter,
+  Catch,
+  ArgumentsHost,
+  HttpException,
+  HttpStatus,
+  Logger,
+} from '@nestjs/common';
+import * as Sentry from '@sentry/nestjs';
 
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
+  private readonly logger = new Logger('ExceptionFilter');
+
   catch(exception: unknown, host: ArgumentsHost) {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse();
-
-    if (!(exception instanceof HttpException)) {
-      console.error('Unhandled exception:', exception);
-    }
+    const request = ctx.getRequest();
 
     const status =
       exception instanceof HttpException
@@ -20,10 +27,26 @@ export class AllExceptionsFilter implements ExceptionFilter {
         ? exception.getResponse()
         : 'Internal server error';
 
+    const correlationId: string | undefined = request?.correlationId;
+
+    // Only report unexpected errors (5xx) to Sentry — 4xx are client errors, not ours
+    if (status >= 500) {
+      this.logger.error(
+        `Unhandled exception [correlationId=${correlationId ?? 'n/a'}]`,
+        exception instanceof Error ? exception.stack : String(exception),
+      );
+
+      Sentry.withScope((scope) => {
+        if (correlationId) scope.setTag('correlation_id', correlationId);
+        Sentry.captureException(exception);
+      });
+    }
+
     response.status(status).send({
       statusCode: status,
       error: message,
       timestamp: new Date().toISOString(),
+      correlationId,
     });
   }
 }

@@ -1,7 +1,10 @@
 'use client';
 import { useState } from 'react';
+import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import { useFetch, mutate } from '@/lib/hooks';
+import { Button } from '@/components/ui/button';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 
 interface Community { id: string; name: string }
 interface Policy {
@@ -23,14 +26,12 @@ export default function PoliciesPage() {
   const [selected, setSelected] = useState('');
   const [localPolicy, setLocalPolicy] = useState<Policy | null>(null);
   const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
 
   const communityId = selected || communities?.[0]?.id || null;
   const { data: policy } = useFetch<Policy>(
     communityId ? `/admin/communities/${communityId}/policy` : null
   );
 
-  // Sync remote policy into local editable state when it arrives
   const editablePolicy = localPolicy ?? policy ?? null;
 
   async function save(e: React.FormEvent) {
@@ -41,8 +42,9 @@ export default function PoliciesPage() {
       const updated = await api.patch<Policy>(`/admin/communities/${communityId}/policy`, editablePolicy);
       setLocalPolicy(null);
       mutate(`/admin/communities/${communityId}/policy`, updated, false);
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
+      toast.success('Policy saved');
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Failed to save policy');
     } finally {
       setSaving(false);
     }
@@ -64,44 +66,44 @@ export default function PoliciesPage() {
 
       {editablePolicy && (
         <form onSubmit={save} className="space-y-6 max-w-2xl">
-          <Section title="Guest Pass Permissions">
-            <Toggle label="Family members can create guest passes" value={editablePolicy.family_can_generate_guest_passes} onChange={v => setField('family_can_generate_guest_passes', v)} />
-            <Toggle label="Tenants can create guest passes" value={editablePolicy.tenant_can_generate_guest_passes} onChange={v => setField('tenant_can_generate_guest_passes', v)} />
-            <Toggle label="Staff can create guest passes" value={editablePolicy.staff_can_generate_guest_passes} onChange={v => setField('staff_can_generate_guest_passes', v)} />
-          </Section>
+          <Card>
+            <CardHeader><CardTitle>Guest Pass Permissions</CardTitle></CardHeader>
+            <CardContent className="space-y-3">
+              <Toggle label="Family members can create guest passes" value={editablePolicy.family_can_generate_guest_passes} onChange={v => setField('family_can_generate_guest_passes', v)} />
+              <Toggle label="Tenants can create guest passes" value={editablePolicy.tenant_can_generate_guest_passes} onChange={v => setField('tenant_can_generate_guest_passes', v)} />
+              <Toggle label="Staff can create guest passes" value={editablePolicy.staff_can_generate_guest_passes} onChange={v => setField('staff_can_generate_guest_passes', v)} />
+            </CardContent>
+          </Card>
 
-          <Section title="Limits">
-            <NumberField label="Max active passes per host" value={editablePolicy.max_active_guest_passes_per_host} onChange={v => setField('max_active_guest_passes_per_host', v)} />
-            <NumberField label="Max passes per day" value={editablePolicy.max_guest_passes_per_day} onChange={v => setField('max_guest_passes_per_day', v)} />
-          </Section>
+          <Card>
+            <CardHeader><CardTitle>Limits</CardTitle></CardHeader>
+            <CardContent className="space-y-3">
+              <NumberField label="Max active passes per host" value={editablePolicy.max_active_guest_passes_per_host} onChange={v => setField('max_active_guest_passes_per_host', v)} />
+              <NumberField label="Max passes per day" value={editablePolicy.max_guest_passes_per_day} onChange={v => setField('max_guest_passes_per_day', v)} />
+            </CardContent>
+          </Card>
 
-          <Section title="Pass Duration (hours)">
-            <NumberField label="Guest" value={editablePolicy.guest_pass_guest_duration_hours} onChange={v => setField('guest_pass_guest_duration_hours', v)} />
-            <NumberField label="Delivery" value={editablePolicy.guest_pass_delivery_duration_hours} onChange={v => setField('guest_pass_delivery_duration_hours', v)} />
-            <NumberField label="Service Provider" value={editablePolicy.guest_pass_service_duration_hours} onChange={v => setField('guest_pass_service_duration_hours', v)} />
-          </Section>
+          <Card>
+            <CardHeader><CardTitle>Pass Duration (hours)</CardTitle></CardHeader>
+            <CardContent className="space-y-3">
+              <NumberField label="Guest" value={editablePolicy.guest_pass_guest_duration_hours} onChange={v => setField('guest_pass_guest_duration_hours', v)} />
+              <NumberField label="Delivery" value={editablePolicy.guest_pass_delivery_duration_hours} onChange={v => setField('guest_pass_delivery_duration_hours', v)} />
+              <NumberField label="Service Provider" value={editablePolicy.guest_pass_service_duration_hours} onChange={v => setField('guest_pass_service_duration_hours', v)} />
+            </CardContent>
+          </Card>
 
-          <Section title="Pass Usage Limit">
-            <NumberField label="Guest" value={editablePolicy.guest_pass_guest_usage_limit} onChange={v => setField('guest_pass_guest_usage_limit', v)} />
-            <NumberField label="Delivery" value={editablePolicy.guest_pass_delivery_usage_limit} onChange={v => setField('guest_pass_delivery_usage_limit', v)} />
-            <NumberField label="Service Provider" value={editablePolicy.guest_pass_service_usage_limit} onChange={v => setField('guest_pass_service_usage_limit', v)} />
-          </Section>
+          <Card>
+            <CardHeader><CardTitle>Pass Usage Limit</CardTitle></CardHeader>
+            <CardContent className="space-y-3">
+              <NumberField label="Guest" value={editablePolicy.guest_pass_guest_usage_limit} onChange={v => setField('guest_pass_guest_usage_limit', v)} />
+              <NumberField label="Delivery" value={editablePolicy.guest_pass_delivery_usage_limit} onChange={v => setField('guest_pass_delivery_usage_limit', v)} />
+              <NumberField label="Service Provider" value={editablePolicy.guest_pass_service_usage_limit} onChange={v => setField('guest_pass_service_usage_limit', v)} />
+            </CardContent>
+          </Card>
 
-          <button type="submit" disabled={saving}
-            className="bg-brand-600 hover:bg-brand-700 text-white font-medium px-6 py-2 rounded-lg text-sm disabled:opacity-50">
-            {saved ? 'Saved!' : saving ? 'Saving…' : 'Save Policy'}
-          </button>
+          <Button type="submit" disabled={saving}>{saving ? 'Saving…' : 'Save Policy'}</Button>
         </form>
       )}
-    </div>
-  );
-}
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div className="bg-white border border-gray-200 rounded-xl p-5">
-      <h3 className="font-medium text-gray-900 mb-4">{title}</h3>
-      <div className="space-y-3">{children}</div>
     </div>
   );
 }

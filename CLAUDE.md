@@ -84,4 +84,4 @@ packages/
 | Purpose | SID | Variables |
 |---------|-----|-----------|
 | OTP | `HX5e5501a5bf766bdabd62e4f3fe4b8149` | `{ "1": otp_code }` |
-| Member welcome | `TWILIO_WELCOME_TEMPLATE_SID` (Railway env) | `{ "1": community_name }` |
+| Member added | `TWILIO_WELCOME_TEMPLATE_SID` (Railway env) — `HX1bbbe6248ac8e02e04a92ee1d92c3951` (`simsim_member_added`) | `{ "1": community_name }` |

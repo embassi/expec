@@ -1,4 +1,3 @@
-import { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -7,27 +6,14 @@ import {
   ActivityIndicator,
   RefreshControl,
 } from 'react-native';
+import Animated, { FadeInDown } from 'react-native-reanimated';
+import { useQuery } from '@tanstack/react-query';
+import type { ApiCommunity, ApiMembership } from '@simsim/types';
 import { api } from '../../lib/api';
 import { Colors } from '../../lib/colors';
 
-interface Community {
-  id: string;
-  name: string;
-  slug: string;
-  type: string;
-}
-
-interface Membership {
-  id: string;
-  community_id: string;
-  unit_id: string | null;
-  relationship_type: string;
-  role_type: string;
-  approval_status: string;
-}
-
-interface CommunityWithMembership extends Community {
-  membership: Membership | null;
+interface CommunityWithMembership extends ApiCommunity {
+  membership: ApiMembership | null;
 }
 
 const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
@@ -38,32 +24,21 @@ const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
 };
 
 export default function CommunitiesScreen() {
-  const [items, setItems] = useState<CommunityWithMembership[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-
-  async function load() {
-    try {
+  const { data: items = [], isLoading, isFetching, refetch } = useQuery({
+    queryKey: ['communities-with-memberships'],
+    queryFn: async (): Promise<CommunityWithMembership[]> => {
       const [communities, memberships] = await Promise.all([
-        api.get<Community[]>('/communities/my'),
-        api.get<Membership[]>('/memberships/my'),
+        api.get<ApiCommunity[]>('/communities/my'),
+        api.get<ApiMembership[]>('/memberships/my'),
       ]);
-      const joined = communities.map(c => ({
+      return communities.map(c => ({
         ...c,
         membership: memberships.find(m => m.community_id === c.id) ?? null,
       }));
-      setItems(joined);
-    } catch {
-      // silently fail — show empty state
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }
+    },
+  });
 
-  useEffect(() => { load(); }, []);
-
-  if (loading) {
+  if (isLoading) {
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" color={Colors.primary} />
@@ -79,19 +54,19 @@ export default function CommunitiesScreen() {
       keyExtractor={i => i.id}
       refreshControl={
         <RefreshControl
-          refreshing={refreshing}
-          onRefresh={() => { setRefreshing(true); load(); }}
+          refreshing={isFetching && !isLoading}
+          onRefresh={refetch}
           tintColor={Colors.primary}
         />
       }
       ListEmptyComponent={
         <Text style={styles.empty}>No communities yet.{'\n'}Ask a manager to add you.</Text>
       }
-      renderItem={({ item }) => {
+      renderItem={({ item, index }) => {
         const status = item.membership?.approval_status ?? 'unknown';
         const colors = STATUS_COLORS[status] ?? { bg: Colors.surface, text: Colors.textSecondary };
         return (
-          <View style={styles.card}>
+          <Animated.View entering={FadeInDown.delay(index * 60).duration(300)} style={styles.card}>
             <View style={styles.cardHeader}>
               <Text style={styles.communityName}>{item.name}</Text>
               <View style={[styles.badge, { backgroundColor: colors.bg }]}>
@@ -110,7 +85,7 @@ export default function CommunitiesScreen() {
                 </Text>
               </View>
             )}
-          </View>
+          </Animated.View>
         );
       }}
     />

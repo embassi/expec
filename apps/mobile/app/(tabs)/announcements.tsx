@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import {
   View,
   Text,
@@ -9,61 +9,32 @@ import {
   ActivityIndicator,
   RefreshControl,
 } from 'react-native';
+import { useQuery } from '@tanstack/react-query';
+import type { ApiAnnouncement, ApiCommunity } from '@simsim/types';
 import { api } from '../../lib/api';
 import { Colors } from '../../lib/colors';
 import { AnnouncementCard } from '../../components/AnnouncementCard';
 
-interface Community {
-  id: string;
-  name: string;
-}
-
-interface Announcement {
-  id: string;
-  title: string;
-  body: string;
-  image_url: string | null;
-  published_at: string | null;
-  created_at: string;
-}
-
 export default function AnnouncementsScreen() {
-  const [communities, setCommunities] = useState<Community[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
-  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
-  const [loadingCommunities, setLoadingCommunities] = useState(true);
-  const [loadingAnnouncements, setLoadingAnnouncements] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
-    api.get<Community[]>('/communities/my')
-      .then(cs => {
-        setCommunities(cs);
-        if (cs.length > 0) setSelected(cs[0].id);
-      })
-      .finally(() => setLoadingCommunities(false));
-  }, []);
+  const { data: communities = [], isLoading: loadingCommunities } = useQuery({
+    queryKey: ['communities'],
+    queryFn: () => api.get<ApiCommunity[]>('/communities/my'),
+  });
 
-  useEffect(() => {
-    if (!selected) return;
-    setLoadingAnnouncements(true);
-    api.get<Announcement[]>(`/communities/${selected}/announcements`)
-      .then(setAnnouncements)
-      .catch(() => setAnnouncements([]))
-      .finally(() => {
-        setLoadingAnnouncements(false);
-        setRefreshing(false);
-      });
-  }, [selected]);
+  const communityId = selected ?? communities[0]?.id ?? null;
 
-  function handleRefresh() {
-    setRefreshing(true);
-    if (!selected) { setRefreshing(false); return; }
-    api.get<Announcement[]>(`/communities/${selected}/announcements`)
-      .then(setAnnouncements)
-      .catch(() => setAnnouncements([]))
-      .finally(() => setRefreshing(false));
-  }
+  const {
+    data: announcements = [],
+    isLoading: loadingAnnouncements,
+    isFetching,
+    refetch,
+  } = useQuery({
+    queryKey: ['announcements', communityId],
+    queryFn: () => api.get<ApiAnnouncement[]>(`/communities/${communityId}/announcements`),
+    enabled: !!communityId,
+  });
 
   if (loadingCommunities) {
     return <View style={styles.center}><ActivityIndicator size="large" color={Colors.primary} /></View>;
@@ -80,10 +51,10 @@ export default function AnnouncementsScreen() {
           {communities.map(c => (
             <TouchableOpacity
               key={c.id}
-              style={[styles.pill, selected === c.id && styles.pillActive]}
+              style={[styles.pill, communityId === c.id && styles.pillActive]}
               onPress={() => setSelected(c.id)}
             >
-              <Text style={[styles.pillText, selected === c.id && styles.pillTextActive]}>
+              <Text style={[styles.pillText, communityId === c.id && styles.pillTextActive]}>
                 {c.name}
               </Text>
             </TouchableOpacity>
@@ -102,8 +73,8 @@ export default function AnnouncementsScreen() {
           keyExtractor={a => a.id}
           refreshControl={
             <RefreshControl
-              refreshing={refreshing}
-              onRefresh={handleRefresh}
+              refreshing={isFetching && !loadingAnnouncements}
+              onRefresh={refetch}
               tintColor={Colors.primary}
             />
           }

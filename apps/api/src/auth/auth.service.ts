@@ -2,15 +2,25 @@ import {
   Injectable,
   BadRequestException,
   UnauthorizedException,
+  HttpException,
+  HttpStatus,
   Logger,
+  OnModuleInit,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
+import { QueueService, QUEUE_JOBS } from '../queue/queue.service';
+import { SendOtpJobData } from '../queue/job-types';
 import { Twilio } from 'twilio';
+import { createHmac } from 'crypto';
+import * as Sentry from '@sentry/nestjs';
+
+const MAX_OTP_ATTEMPTS = 5;
+const OTP_RESEND_COOLDOWN_MS = 60_000; // 60 seconds
 
 @Injectable()
-export class AuthService {
+export class AuthService implements OnModuleInit {
   private readonly logger = new Logger(AuthService.name);
   private twilioClient: Twilio;
 
@@ -18,6 +28,7 @@ export class AuthService {
     private prisma: PrismaService,
     private jwtService: JwtService,
     private config: ConfigService,
+    private queue: QueueService,
   ) {
     this.twilioClient = new Twilio(
       this.config.get('TWILIO_ACCOUNT_SID'),
@@ -25,43 +36,85 @@ export class AuthService {
     );
   }
 
-  async requestOtp(phoneNumber: string): Promise<{ message: string }> {
-    const isDev = this.config.get('NODE_ENV') !== 'production';
+  async onModuleInit() {
+    // pg-boss v12 delivers jobs in batches; process each item sequentially
+    await this.queue.registerWorker<SendOtpJobData>(
+      QUEUE_JOBS.SEND_OTP,
+      async (jobs) => {
+        for (const job of jobs) {
+          await this.sendWhatsAppOtp(job.data.phoneNumber, job.data.otp);
+        }
+      },
+      { localConcurrency: 3 },
+    );
+  }
 
-    // Invalidate previous unused OTPs for this number
+  async requestOtp(rawPhone: string): Promise<{ message: string }> {
+    const phoneNumber = this.normalizePhone(rawPhone);
+
+    // Resend cooldown — prevent spam per phone number (independent of IP throttle)
+    const recent = await this.prisma.otpVerification.findFirst({
+      where: {
+        phone_number: phoneNumber,
+        created_at: { gt: new Date(Date.now() - OTP_RESEND_COOLDOWN_MS) },
+      },
+      orderBy: { created_at: 'desc' },
+    });
+
+    if (recent) {
+      const waitMs = recent.created_at.getTime() + OTP_RESEND_COOLDOWN_MS - Date.now();
+      const waitSec = Math.ceil(waitMs / 1000);
+      throw new HttpException(
+        { message: `Please wait ${waitSec}s before requesting another OTP` },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
+    // Invalidate any previous unused OTPs for this number
     await this.prisma.otpVerification.updateMany({
       where: { phone_number: phoneNumber, used: false },
       data: { used: true },
     });
 
+    // Only use fixed OTP in explicit development mode (not just !production)
+    const isDev = this.config.get('NODE_ENV') === 'development';
     const otp = isDev ? '123456' : this.generateOtp();
-    const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
+    const otpHash = this.hashOtp(otp);
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
 
     await this.prisma.otpVerification.create({
       data: {
         phone_number: phoneNumber,
-        otp_code: otp,
+        otp_hash: otpHash,
         expires_at: expiresAt,
       },
     });
 
     if (isDev) {
+      // OTP is only logged in development — never emitted in production
       this.logger.log(`[DEV] OTP for ${phoneNumber}: ${otp}`);
     } else {
-      await this.sendWhatsAppOtp(phoneNumber, otp);
+      // Enqueue — Twilio send happens async with up to 3 retries (30s → 5m → ~1h)
+      // The OTP hash is already persisted, so retries are safe
+      await this.queue.enqueue<SendOtpJobData>(QUEUE_JOBS.SEND_OTP, {
+        phoneNumber,
+        otp,
+      });
     }
 
     return { message: isDev ? 'OTP sent (dev: use 123456)' : 'OTP sent via WhatsApp' };
   }
 
   async verifyOtp(
-    phoneNumber: string,
+    rawPhone: string,
     otp: string,
   ): Promise<{ access_token: string; user: any }> {
+    const phoneNumber = this.normalizePhone(rawPhone);
+
+    // Find the latest active (non-expired, non-used) OTP for this phone
     const record = await this.prisma.otpVerification.findFirst({
       where: {
         phone_number: phoneNumber,
-        otp_code: otp,
         used: false,
         expires_at: { gt: new Date() },
       },
@@ -72,13 +125,39 @@ export class AuthService {
       throw new UnauthorizedException('Invalid or expired OTP');
     }
 
+    // Hard limit on failed attempts — prevents brute force even within the 5-minute window
+    if (record.attempts >= MAX_OTP_ATTEMPTS) {
+      await this.prisma.otpVerification.update({
+        where: { id: record.id },
+        data: { used: true },
+      });
+      throw new UnauthorizedException(
+        'Too many failed attempts. Please request a new OTP.',
+      );
+    }
+
+    const otpHash = this.hashOtp(otp);
+
+    if (record.otp_hash !== otpHash) {
+      await this.prisma.otpVerification.update({
+        where: { id: record.id },
+        data: { attempts: { increment: 1 } },
+      });
+      const remaining = MAX_OTP_ATTEMPTS - record.attempts - 1;
+      throw new UnauthorizedException(
+        remaining > 0
+          ? `Invalid OTP. ${remaining} attempt${remaining === 1 ? '' : 's'} remaining.`
+          : 'Invalid OTP',
+      );
+    }
+
     // Mark OTP as used
     await this.prisma.otpVerification.update({
       where: { id: record.id },
       data: { used: true },
     });
 
-    // Upsert user — if invited, activate on first login
+    // Upsert user — activate if previously invited
     const user = await this.prisma.user.upsert({
       where: { phone_number: phoneNumber },
       update: { status: 'active' },
@@ -100,6 +179,27 @@ export class AuthService {
     };
   }
 
+  // ─── Helpers ──────────────────────────────────────────────────────────────
+
+  /**
+   * HMAC-SHA256 hash of the OTP using a server-side secret.
+   * A DB-only attacker cannot reverse the OTP without the secret key.
+   * Falls back to JWT_SECRET if OTP_HASH_SECRET is not set.
+   */
+  private hashOtp(otp: string): string {
+    const secret =
+      this.config.get<string>('OTP_HASH_SECRET') ??
+      this.config.get<string>('JWT_SECRET') ??
+      'dev-fallback-secret';
+    return createHmac('sha256', secret).update(otp).digest('hex');
+  }
+
+  /** Ensures phone is in international format: strips whitespace, prepends + if missing */
+  private normalizePhone(phone: string): string {
+    const trimmed = phone.trim().replace(/\s+/g, '');
+    return trimmed.startsWith('+') ? trimmed : `+${trimmed}`;
+  }
+
   private generateOtp(): string {
     return Math.floor(100000 + Math.random() * 900000).toString();
   }
@@ -109,19 +209,24 @@ export class AuthService {
     const to = `whatsapp:${phoneNumber}`;
     const contentSid = this.config.get<string>('TWILIO_OTP_TEMPLATE_SID');
 
-    this.logger.log(`Sending OTP: from=${from} to=${to}`);
+    this.logger.log(`Sending OTP to ${phoneNumber}`);
     try {
-      // Use approved template if configured (required for first-time users outside 24h window)
-      // otherwise fall back to freeform (works within active session)
       const params = contentSid
         ? { from, to, contentSid, contentVariables: JSON.stringify({ 1: otp }) }
-        : { from, to, body: `Your Simsim verification code is: *${otp}*\n\nThis code expires in 5 minutes. Do not share it with anyone.` };
+        : {
+            from,
+            to,
+            body: `Your Simsim verification code is: *${otp}*\n\nThis code expires in 5 minutes. Do not share it with anyone.`,
+          };
 
-      const msg = await this.twilioClient.messages.create(params as Parameters<typeof this.twilioClient.messages.create>[0]);
-      this.logger.log(`Twilio message SID=${msg.sid} status=${msg.status}`);
+      const msg = await this.twilioClient.messages.create(
+        params as Parameters<typeof this.twilioClient.messages.create>[0],
+      );
+      this.logger.log(`OTP dispatched SID=${msg.sid}`);
     } catch (err) {
       this.logger.error(`Failed to send WhatsApp OTP to ${phoneNumber}`, err);
-      throw new BadRequestException('Failed to send OTP. Please try again.');
+      Sentry.captureException(err, { tags: { event: 'otp_send_failed' } });
+      throw err; // re-throw so pg-boss retries the job
     }
   }
 }

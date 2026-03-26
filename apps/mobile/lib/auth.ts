@@ -1,4 +1,4 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
 import { STORAGE_KEYS } from './storage-keys';
 
 export interface SessionUser {
@@ -10,16 +10,17 @@ export interface SessionUser {
 }
 
 export async function saveSession(token: string, user: SessionUser): Promise<void> {
-  await AsyncStorage.multiSet([
-    [STORAGE_KEYS.ACCESS_TOKEN, token],
-    [STORAGE_KEYS.USER, JSON.stringify(user)],
+  await Promise.all([
+    SecureStore.setItemAsync(STORAGE_KEYS.ACCESS_TOKEN, token),
+    SecureStore.setItemAsync(STORAGE_KEYS.USER, JSON.stringify(user)),
   ]);
 }
 
 export async function getSession(): Promise<{ token: string; user: SessionUser } | null> {
-  const pairs = await AsyncStorage.multiGet([STORAGE_KEYS.ACCESS_TOKEN, STORAGE_KEYS.USER]);
-  const token = pairs[0][1];
-  const userJson = pairs[1][1];
+  const [token, userJson] = await Promise.all([
+    SecureStore.getItemAsync(STORAGE_KEYS.ACCESS_TOKEN),
+    SecureStore.getItemAsync(STORAGE_KEYS.USER),
+  ]);
   if (!token || !userJson) return null;
   try {
     return { token, user: JSON.parse(userJson) };
@@ -29,5 +30,8 @@ export async function getSession(): Promise<{ token: string; user: SessionUser }
 }
 
 export async function clearSession(): Promise<void> {
-  await AsyncStorage.multiRemove([STORAGE_KEYS.ACCESS_TOKEN, STORAGE_KEYS.USER]);
+  await Promise.all([
+    SecureStore.deleteItemAsync(STORAGE_KEYS.ACCESS_TOKEN),
+    SecureStore.deleteItemAsync(STORAGE_KEYS.USER),
+  ]);
 }
