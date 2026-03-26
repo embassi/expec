@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+    branches: [main, 'phase/**', 'feat/**', 'fix/**']
+  pull_request:
+    branches: [main]
+
+jobs:
+  api:
+    name: API — typecheck + test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: .
+
+      - name: Generate Prisma client
+        run: pnpm prisma:generate
+        env:
+          # Prisma generate doesn't need a real DB — just needs the schema
+          DATABASE_URL: postgresql://dummy:dummy@localhost:5432/dummy
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Unit tests
+        run: pnpm test
+        env:
+          NODE_ENV: test
+
+  dashboard:
+    name: Dashboard — typecheck
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/dashboard
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: .
+
+      - name: Typecheck
+        run: npx tsc --noEmit
