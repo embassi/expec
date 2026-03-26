@@ -1,9 +1,30 @@
+# Dependencies
 node_modules
+
+# Build outputs
 dist
 .next
 .turbo
+coverage
+
+# TypeScript incremental build info
+*.tsbuildinfo
+
+# Environment — never commit secrets
 *.env
 *.env.local
+*.env.production
+
+# npm lockfiles — this repo uses pnpm
+package-lock.json
+yarn.lock
+
+# OS
 .DS_Store
-coverage
+Thumbs.db
+
+# Deployment
 .vercel
+
+# Expo
+.expo
