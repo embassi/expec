@@ -11,6 +11,11 @@ import { CreateScannerDto } from './dto/create-scanner.dto';
 import { CreateAnnouncementDto } from './dto/create-announcement.dto';
 import { UpdatePolicyDto } from './dto/update-policy.dto';
 import { ApprovalStatus, GlobalRoleType, RelationshipType, RoleType, AnnouncementStatus } from '@simsim/types';
+import {
+  ApprovalStatus as PrismaApprovalStatus,
+  ServiceRequestStatus as PrismaServiceRequestStatus,
+  UserRoleType as PrismaUserRoleType,
+} from '@prisma/client';
 import { randomBytes } from 'crypto';
 import { Twilio } from 'twilio';
 
@@ -178,7 +183,7 @@ export class AdminService implements OnModuleInit {
     return this.prisma.membership.findMany({
       where: {
         community_id: communityId,
-        ...(status ? { approval_status: status } : {}),
+        ...(status ? { approval_status: status as PrismaApprovalStatus } : {}),
       },
       include: {
         user: { select: { full_name: true, phone_number: true, profile_photo_url: true, status: true } },
@@ -354,7 +359,7 @@ export class AdminService implements OnModuleInit {
     return this.prisma.serviceRequest.findMany({
       where: {
         community_id: communityId,
-        ...(status ? { status } : {}),
+        ...(status ? { status: status as PrismaServiceRequestStatus } : {}),
       },
       include: {
         user: { select: { full_name: true, phone_number: true } },
@@ -371,7 +376,7 @@ export class AdminService implements OnModuleInit {
 
     return this.prisma.serviceRequest.update({
       where: { id: requestId },
-      data: { status },
+      data: { status: status as PrismaServiceRequestStatus },
     });
   }
 
@@ -442,7 +447,7 @@ export class AdminService implements OnModuleInit {
   async updateUserRole(userId: string, roleType: string) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');
-    return this.prisma.user.update({ where: { id: userId }, data: { role_type: roleType } });
+    return this.prisma.user.update({ where: { id: userId }, data: { role_type: roleType as PrismaUserRoleType } });
   }
 
   async resendInvite(membershipId: string, actingUser: any) {

@@ -8,17 +8,110 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
+enum UserStatus {
+  active
+  invited
+  suspended
+
+  @@map("user_status")
+}
+
+enum UserRoleType {
+  user
+  super_admin
+
+  @@map("user_role_type")
+}
+
+enum MembershipRoleType {
+  manager              // legacy
+  community_admin
+  community_manager
+  staff
+  gatekeeper
+  resident
+
+  @@map("membership_role_type")
+}
+
+enum MembershipRelationshipType {
+  owner
+  family
+  tenant
+  staff
+
+  @@map("membership_relationship_type")
+}
+
+enum ApprovalStatus {
+  pending
+  approved
+  rejected
+  suspended
+
+  @@map("approval_status")
+}
+
+enum PassType {
+  guest
+  delivery
+  service_provider
+
+  @@map("pass_type")
+}
+
+enum PassStatus {
+  active
+  used
+  expired
+  cancelled
+
+  @@map("pass_status")
+}
+
+enum ScanResult {
+  granted
+  denied
+
+  @@map("scan_result")
+}
+
+enum ScanType {
+  resident
+  guest
+
+  @@map("scan_type")
+}
+
+enum AnnouncementStatus {
+  draft
+  published
+
+  @@map("announcement_status")
+}
+
+enum ServiceRequestStatus {
+  open
+  in_progress
+  resolved
+  closed
+
+  @@map("service_request_status")
+}
+
 // ─── Users ────────────────────────────────────────────────────────────────────
 
 model User {
-  id                String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  phone_number      String   @unique
+  id                String      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  phone_number      String      @unique
   full_name         String?
   profile_photo_url String?
-  status            String   @default("active")
-  role_type         String   @default("resident")
-  created_at        DateTime @default(now())
-  updated_at        DateTime @default(now()) @updatedAt
+  status            UserStatus  @default(active)
+  role_type         UserRoleType @default(user)
+  created_at        DateTime    @default(now())
+  updated_at        DateTime    @default(now()) @updatedAt
 
   memberships      Membership[]
   guest_passes     GuestPass[]
@@ -88,18 +181,18 @@ model Unit {
 // ─── Memberships ──────────────────────────────────────────────────────────────
 
 model Membership {
-  id                   String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  user_id              String    @db.Uuid
-  community_id         String    @db.Uuid
-  unit_id              String?   @db.Uuid
-  relationship_type    String?
-  role_type            String?
-  approval_status      String    @default("pending")
-  invited_by_user_id   String?   @db.Uuid
-  created_by_manager_id String?  @db.Uuid
+  id                   String                     @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  user_id              String                     @db.Uuid
+  community_id         String                     @db.Uuid
+  unit_id              String?                    @db.Uuid
+  relationship_type    MembershipRelationshipType?
+  role_type            MembershipRoleType?
+  approval_status      ApprovalStatus             @default(pending)
+  invited_by_user_id   String?                    @db.Uuid
+  created_by_manager_id String?                   @db.Uuid
   start_date           DateTime?
   end_date             DateTime?
-  created_at           DateTime  @default(now())
+  created_at           DateTime                   @default(now())
 
   user      User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
   community Community @relation(fields: [community_id], references: [id], onDelete: Cascade)
@@ -136,21 +229,21 @@ model Scanner {
 // ─── Access Logs ──────────────────────────────────────────────────────────────
 
 model AccessLog {
-  id             String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  community_id   String?  @db.Uuid
-  scanner_id     String?  @db.Uuid
+  id             String     @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  community_id   String?    @db.Uuid
+  scanner_id     String?    @db.Uuid
   scanner_code   String?
-  scan_type      String?
-  user_id        String?  @db.Uuid
-  membership_id  String?  @db.Uuid
-  guest_pass_id  String?  @db.Uuid
+  scan_type      ScanType?
+  user_id        String?    @db.Uuid
+  membership_id  String?    @db.Uuid
+  guest_pass_id  String?    @db.Uuid
   resident_name  String?
   resident_phone String?
-  unit_id        String?  @db.Uuid
+  unit_id        String?    @db.Uuid
   unit_code      String?
-  result         String
+  result         ScanResult
   denial_reason  String?
-  scanned_at     DateTime @default(now())
+  scanned_at     DateTime   @default(now())
 
   community Community? @relation(fields: [community_id], references: [id])
   scanner   Scanner?   @relation(fields: [scanner_id], references: [id])
@@ -166,20 +259,20 @@ model AccessLog {
 // ─── Guest Passes ─────────────────────────────────────────────────────────────
 
 model GuestPass {
-  id                 String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  community_id       String   @db.Uuid
-  host_user_id       String   @db.Uuid
-  host_membership_id String   @db.Uuid
+  id                 String     @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  community_id       String     @db.Uuid
+  host_user_id       String     @db.Uuid
+  host_membership_id String     @db.Uuid
   guest_name         String
   guest_phone        String
-  pass_type          String
-  status             String   @default("active")
+  pass_type          PassType
+  status             PassStatus @default(active)
   valid_from         DateTime
   valid_until        DateTime
   usage_limit        Int
-  usage_count        Int      @default(0)
-  qr_token_version   Int      @default(1)
-  created_at         DateTime @default(now())
+  usage_count        Int        @default(0)
+  qr_token_version   Int        @default(1)
+  created_at         DateTime   @default(now())
 
   community       Community  @relation(fields: [community_id], references: [id])
   host_user       User       @relation(fields: [host_user_id], references: [id])
@@ -192,14 +285,14 @@ model GuestPass {
 // ─── Announcements ────────────────────────────────────────────────────────────
 
 model Announcement {
-  id           String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  community_id String    @db.Uuid
+  id           String             @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  community_id String             @db.Uuid
   title        String?
   body         String?
   image_url    String?
-  published_by String?   @db.Uuid
+  published_by String?            @db.Uuid
   published_at DateTime?
-  status       String    @default("draft")
+  status       AnnouncementStatus @default(draft)
 
   community Community @relation(fields: [community_id], references: [id])
 
@@ -209,16 +302,16 @@ model Announcement {
 // ─── Service Requests ─────────────────────────────────────────────────────────
 
 model ServiceRequest {
-  id            String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  community_id  String   @db.Uuid
-  user_id       String   @db.Uuid
-  membership_id String?  @db.Uuid
+  id            String               @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  community_id  String               @db.Uuid
+  user_id       String               @db.Uuid
+  membership_id String?              @db.Uuid
   category      String?
   subject       String?
   description   String?
-  status        String   @default("open")
-  assigned_to   String?  @db.Uuid
-  created_at    DateTime @default(now())
+  status        ServiceRequestStatus @default(open)
+  assigned_to   String?              @db.Uuid
+  created_at    DateTime             @default(now())
 
   community Community @relation(fields: [community_id], references: [id])
   user      User      @relation(fields: [user_id], references: [id])

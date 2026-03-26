@@ -3,6 +3,7 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import * as Sentry from '@sentry/nestjs';
+import { ScanResult as PrismaScanResult, ScanType as PrismaScanType } from '@prisma/client';
 import {
   ScanResult,
   ScanType,
@@ -210,7 +211,7 @@ export class ScannerService {
     community_id: string;
     scanner_id: string;
     scanner_code: string;
-    scan_type: string;
+    scan_type: PrismaScanType;
     user_id?: string;
     membership_id?: string;
     guest_pass_id?: string;
@@ -218,7 +219,7 @@ export class ScannerService {
     resident_phone?: string;
     unit_id?: string;
     unit_code?: string;
-    result: string;
+    result: PrismaScanResult;
     denial_reason?: string;
   }) {
     try {
