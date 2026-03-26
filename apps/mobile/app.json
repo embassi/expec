@@ -25,7 +25,13 @@
     },
     "plugins": [
       "expo-router",
-      "expo-font"
+      "expo-font",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Simsim needs access to your photos to set your profile picture."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

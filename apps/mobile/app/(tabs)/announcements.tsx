@@ -10,30 +10,17 @@ import {
   RefreshControl,
 } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
+import type { ApiAnnouncement, ApiCommunity } from '@simsim/types';
 import { api } from '../../lib/api';
 import { Colors } from '../../lib/colors';
 import { AnnouncementCard } from '../../components/AnnouncementCard';
-
-interface Community {
-  id: string;
-  name: string;
-}
-
-interface Announcement {
-  id: string;
-  title: string;
-  body: string;
-  image_url: string | null;
-  published_at: string | null;
-  created_at: string;
-}
 
 export default function AnnouncementsScreen() {
   const [selected, setSelected] = useState<string | null>(null);
 
   const { data: communities = [], isLoading: loadingCommunities } = useQuery({
     queryKey: ['communities'],
-    queryFn: () => api.get<Community[]>('/communities/my'),
+    queryFn: () => api.get<ApiCommunity[]>('/communities/my'),
   });
 
   const communityId = selected ?? communities[0]?.id ?? null;
@@ -45,7 +32,7 @@ export default function AnnouncementsScreen() {
     refetch,
   } = useQuery({
     queryKey: ['announcements', communityId],
-    queryFn: () => api.get<Announcement[]>(`/communities/${communityId}/announcements`),
+    queryFn: () => api.get<ApiAnnouncement[]>(`/communities/${communityId}/announcements`),
     enabled: !!communityId,
   });
 

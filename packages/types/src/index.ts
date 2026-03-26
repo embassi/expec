@@ -162,6 +162,7 @@ export interface ApiAnnouncement {
   published_by: string | null;
   published_at: string | null;
   status: AnnouncementStatus;
+  created_at?: string;
 }
 
 export interface ApiServiceRequest {
@@ -254,4 +255,14 @@ export interface ApiAdminOverview {
   total_communities: number;
   total_members: number;
   pending_memberships: number;
+}
+
+// ─── Pagination ───────────────────────────────────────────────────────────────
+
+/** Standard paginated list response envelope returned by all admin list endpoints */
+export interface PaginatedResponse<T> {
+  data: T[];
+  total: number;
+  limit: number;
+  offset: number;
 }

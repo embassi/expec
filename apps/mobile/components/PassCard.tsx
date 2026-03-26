@@ -1,19 +1,9 @@
 import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
+import type { ApiGuestPass } from '@simsim/types';
 import { Colors } from '../lib/colors';
 
-interface GuestPass {
-  id: string;
-  guest_name: string;
-  guest_phone: string;
-  pass_type: string;
-  status: string;
-  valid_until: string | null;
-  usage_limit: number | null;
-  usage_count: number;
-}
-
 interface Props {
-  pass: GuestPass;
+  pass: ApiGuestPass;
   onCancel: () => void;
 }
 
@@ -34,7 +24,7 @@ export function PassCard({ pass, onCancel }: Props) {
       [
         { text: 'Keep', style: 'cancel' },
         { text: 'Cancel pass', style: 'destructive', onPress: onCancel },
-      ]
+      ],
     );
   }
 
@@ -61,7 +51,7 @@ export function PassCard({ pass, onCancel }: Props) {
             Until: {new Date(pass.valid_until).toLocaleDateString()}
           </Text>
         )}
-        {pass.usage_limit && (
+        {pass.usage_limit > 0 && (
           <Text style={styles.metaText}>
             Uses: {pass.usage_count}/{pass.usage_limit}
           </Text>

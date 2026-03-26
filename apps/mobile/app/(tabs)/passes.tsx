@@ -9,28 +9,11 @@ import {
 } from 'react-native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
+import type { ApiGuestPass, ApiCommunity } from '@simsim/types';
 import { api } from '../../lib/api';
 import { Colors } from '../../lib/colors';
 import { PassCard } from '../../components/PassCard';
 import { CreatePassModal } from '../../components/CreatePassModal';
-
-interface Community {
-  id: string;
-  name: string;
-}
-
-interface GuestPass {
-  id: string;
-  guest_name: string;
-  guest_phone: string;
-  pass_type: string;
-  status: string;
-  valid_from: string | null;
-  valid_until: string | null;
-  usage_limit: number | null;
-  usage_count: number;
-  created_at: string;
-}
 
 export default function PassesScreen() {
   const queryClient = useQueryClient();
@@ -38,12 +21,12 @@ export default function PassesScreen() {
 
   const { data: passes = [], isLoading, isFetching, refetch } = useQuery({
     queryKey: ['passes'],
-    queryFn: () => api.get<GuestPass[]>('/guest-passes/my'),
+    queryFn: () => api.get<ApiGuestPass[]>('/guest-passes/my'),
   });
 
   const { data: communities = [] } = useQuery({
     queryKey: ['communities'],
-    queryFn: () => api.get<Community[]>('/communities/my'),
+    queryFn: () => api.get<ApiCommunity[]>('/communities/my'),
   });
 
   const cancelMutation = useMutation({

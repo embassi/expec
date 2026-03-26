@@ -8,27 +8,12 @@ import {
 } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useQuery } from '@tanstack/react-query';
+import type { ApiCommunity, ApiMembership } from '@simsim/types';
 import { api } from '../../lib/api';
 import { Colors } from '../../lib/colors';
 
-interface Community {
-  id: string;
-  name: string;
-  slug: string;
-  type: string;
-}
-
-interface Membership {
-  id: string;
-  community_id: string;
-  unit_id: string | null;
-  relationship_type: string;
-  role_type: string;
-  approval_status: string;
-}
-
-interface CommunityWithMembership extends Community {
-  membership: Membership | null;
+interface CommunityWithMembership extends ApiCommunity {
+  membership: ApiMembership | null;
 }
 
 const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
@@ -43,8 +28,8 @@ export default function CommunitiesScreen() {
     queryKey: ['communities-with-memberships'],
     queryFn: async (): Promise<CommunityWithMembership[]> => {
       const [communities, memberships] = await Promise.all([
-        api.get<Community[]>('/communities/my'),
-        api.get<Membership[]>('/memberships/my'),
+        api.get<ApiCommunity[]>('/communities/my'),
+        api.get<ApiMembership[]>('/memberships/my'),
       ]);
       return communities.map(c => ({
         ...c,

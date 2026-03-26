@@ -9,20 +9,17 @@ import {
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../lib/api';
-import { getSession } from '../../lib/auth';
 import { Colors } from '../../lib/colors';
 import { QrCode } from '../../components/QrCode';
 
 const REFRESH_INTERVAL = 25;
 
 export default function QrScreen() {
-  const [userName, setUserName] = useState('');
-
-  useEffect(() => {
-    getSession().then(s => {
-      if (s?.user?.full_name) setUserName(s.user.full_name);
-    });
-  }, []);
+  const { data: me } = useQuery({
+    queryKey: ['me'],
+    queryFn: () => api.get<{ full_name: string | null }>('/me'),
+    staleTime: 60_000,
+  });
 
   const { data, isLoading, error, dataUpdatedAt, refetch } = useQuery({
     queryKey: ['qr-token'],
@@ -51,7 +48,9 @@ export default function QrScreen() {
   return (
     <View style={styles.container}>
       <Animated.View entering={FadeIn.duration(300)} style={styles.card}>
-        {userName ? <Text style={styles.name}>{userName}</Text> : null}
+        {me?.full_name ? (
+          <Text style={styles.name}>{me.full_name}</Text>
+        ) : null}
         <Text style={styles.subtitle}>Show this QR code at the gate</Text>
 
         <View style={styles.qrContainer}>
@@ -65,7 +64,11 @@ export default function QrScreen() {
               </TouchableOpacity>
             </Animated.View>
           ) : token ? (
-            <Animated.View key={token} entering={FadeIn.duration(200)} exiting={FadeOut.duration(150)}>
+            <Animated.View
+              key={token}
+              entering={FadeIn.duration(200)}
+              exiting={FadeOut.duration(150)}
+            >
               <QrCode token={token} size={220} />
             </Animated.View>
           ) : null}
@@ -73,7 +76,12 @@ export default function QrScreen() {
 
         {!errorMsg && !isLoading && (
           <View style={styles.countdownRow}>
-            <View style={[styles.countdownBar, { width: `${(countdown / REFRESH_INTERVAL) * 100}%` }]} />
+            <View
+              style={[
+                styles.countdownBar,
+                { width: `${(countdown / REFRESH_INTERVAL) * 100}%` },
+              ]}
+            />
             <Text style={styles.countdownText}>Refreshes in {countdown}s</Text>
           </View>
         )}
