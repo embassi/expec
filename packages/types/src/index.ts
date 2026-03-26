@@ -99,8 +99,8 @@ export interface ApiUser {
   phone_number: string;
   full_name: string | null;
   profile_photo_url: string | null;
-  status: string;
-  role_type: string;
+  status: UserStatus;
+  role_type: GlobalRoleType;
   created_at: string;
 }
 
@@ -108,8 +108,18 @@ export interface ApiCommunity {
   id: string;
   name: string;
   slug: string | null;
-  type: string;
+  type: CommunityType;
   status: string;
+}
+
+export interface ApiUnit {
+  id: string;
+  community_id: string;
+  unit_code: string;
+  unit_type: string | null;
+  floor: string | null;
+  building: string | null;
+  created_at: string;
 }
 
 export interface ApiMembership {
@@ -123,14 +133,9 @@ export interface ApiMembership {
   start_date: string | null;
   end_date: string | null;
   created_at: string;
-}
-
-export interface ApiUnit {
-  id: string;
-  community_id: string;
-  unit_code: string;
-  unit_type: string | null;
-  created_at: string;
+  // Nested (included in some responses)
+  user?: Pick<ApiUser, 'full_name' | 'phone_number' | 'profile_photo_url' | 'status'>;
+  unit?: Pick<ApiUnit, 'unit_code'>;
 }
 
 export interface ApiGuestPass {
@@ -148,6 +153,69 @@ export interface ApiGuestPass {
   created_at: string;
 }
 
+export interface ApiAnnouncement {
+  id: string;
+  community_id: string;
+  title: string | null;
+  body: string | null;
+  image_url: string | null;
+  published_by: string | null;
+  published_at: string | null;
+  status: AnnouncementStatus;
+}
+
+export interface ApiServiceRequest {
+  id: string;
+  community_id: string;
+  user_id: string;
+  membership_id: string | null;
+  category: string | null;
+  subject: string | null;
+  description: string | null;
+  status: ServiceRequestStatus;
+  assigned_to: string | null;
+  created_at: string;
+  user?: Pick<ApiUser, 'full_name' | 'phone_number'>;
+}
+
+export interface ApiScanner {
+  id: string;
+  community_id: string;
+  scanner_name: string | null;
+  scanner_code: string;
+  location_label: string | null;
+  is_active: boolean;
+  assigned_user_id: string | null;
+  created_at: string;
+}
+
+export interface ApiAccessLog {
+  id: string;
+  community_id: string | null;
+  scanner_code: string | null;
+  scan_type: ScanType | null;
+  resident_name: string | null;
+  resident_phone: string | null;
+  unit_code: string | null;
+  result: ScanResult;
+  denial_reason: string | null;
+  scanned_at: string;
+}
+
+// ─── Auth ─────────────────────────────────────────────────────────────────────
+
+export interface AuthVerifyOtpResponse {
+  access_token: string;
+  user: ApiUser;
+}
+
+export interface AuthMeResponse {
+  user: ApiUser;
+  memberships: ApiMembership[];
+}
+
+// ─── Scan Validation ──────────────────────────────────────────────────────────
+
 export interface ScanValidationResult {
   result: ScanResult;
   denial_reason?: string;
@@ -160,4 +228,30 @@ export interface ScanValidationResult {
   guest_name?: string;
   host_name?: string;
   host_unit?: string;
+}
+
+// ─── Guest Pass Create ────────────────────────────────────────────────────────
+
+export interface CreateGuestPassRequest {
+  community_id: string;
+  guest_name: string;
+  guest_phone: string;
+  pass_type: PassType;
+}
+
+export interface CreateGuestPassResponse {
+  id: string;
+  pass_type: PassType;
+  valid_from: string;
+  valid_until: string;
+  usage_limit: number;
+  pass_url: string;
+}
+
+// ─── Admin: Overview ─────────────────────────────────────────────────────────
+
+export interface ApiAdminOverview {
+  total_communities: number;
+  total_members: number;
+  pending_memberships: number;
 }
