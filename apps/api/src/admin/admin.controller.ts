@@ -75,10 +75,10 @@ export class AdminController {
 
   // ─── Overview (super admin only) ─────────────────────────────────────────
 
-  @UseGuards(SuperAdminGuard)
+  @UseGuards(AdminGuard)
   @Get('overview')
-  getOverview() {
-    return this.adminService.getOverview();
+  getOverview(@CurrentUser() user: User) {
+    return this.adminService.getOverview(user);
   }
 
   // ─── Communities (super admin only) ──────────────────────────────────────

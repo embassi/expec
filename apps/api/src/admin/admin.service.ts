@@ -18,6 +18,7 @@ import { ListUsersDto } from './dto/list-users.dto';
 import { paginate } from '../common/dto/pagination.dto';
 import { ApprovalStatus, GlobalRoleType, RelationshipType, RoleType, AnnouncementStatus } from '@simsim/types';
 import {
+  User,
   ApprovalStatus as PrismaApprovalStatus,
   ServiceRequestStatus as PrismaServiceRequestStatus,
   UserRoleType as PrismaUserRoleType,
@@ -295,11 +296,22 @@ export class AdminService implements OnModuleInit {
 
   // ─── Overview ──────────────────────────────────────────────────────────────
 
-  async getOverview() {
+  async getOverview(user: User) {
+    const isSuperAdmin = user.role_type === ('super_admin' as any);
+    const communityIds = isSuperAdmin
+      ? undefined
+      : (user as any).memberships
+          ?.filter((m: any) => m.approval_status === 'approved')
+          .map((m: any) => m.community_id) ?? [];
+
+    const where = communityIds ? { community_id: { in: communityIds } } : {};
+
     const [total_communities, total_members, pending_memberships] = await Promise.all([
-      this.prisma.community.count(),
-      this.prisma.membership.count({ where: { approval_status: 'approved' } }),
-      this.prisma.membership.count({ where: { approval_status: 'pending' } }),
+      isSuperAdmin
+        ? this.prisma.community.count()
+        : this.prisma.community.count({ where: { id: { in: communityIds } } }),
+      this.prisma.membership.count({ where: { ...where, approval_status: 'approved' } }),
+      this.prisma.membership.count({ where: { ...where, approval_status: 'pending' } }),
     ]);
     return { total_communities, total_members, pending_memberships };
   }
