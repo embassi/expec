@@ -18,7 +18,6 @@ export async function POST(req: NextRequest) {
   const syncRes = await fetch(`${API_URL}/auth/sync-user`, {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json',
       Authorization: `Bearer ${access_token}`,
     },
   }).catch(() => null);
