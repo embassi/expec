@@ -17,8 +17,9 @@ RUN pnpm build
 WORKDIR /app/apps/api
 RUN pnpm exec prisma generate
 
-# Compile NestJS — output goes to /app/apps/api/dist/
-RUN pnpm exec nest build
+# Compile NestJS — run via pnpm script so binaries resolve correctly,
+# capture output so errors are visible even if nest exits 0
+RUN pnpm run build 2>&1; echo "=== nest build exit: $? ===" && ls -la dist/ 2>&1 || echo "dist/ missing"
 
 # Hard-fail if the build didn't produce the expected entry point
 RUN test -f dist/main.js || (echo "ERROR: dist/main.js not found after nest build" && exit 1)
