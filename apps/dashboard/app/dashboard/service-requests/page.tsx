@@ -12,10 +12,10 @@ interface ServiceRequest {
 }
 
 export default async function ServiceRequestsPage() {
-  const communities = await serverGet<Community[]>('/admin/communities').catch(() => [] as Community[]);
+  const communities = await serverGet<Community[]>('/admin/communities', { revalidate: 60 }).catch(() => [] as Community[]);
   const defaultId = communities[0]?.id ?? '';
   const requests = defaultId
-    ? await serverGet<{ data: ServiceRequest[] }>(`/admin/communities/${defaultId}/service-requests`)
+    ? await serverGet<{ data: ServiceRequest[] }>(`/admin/communities/${defaultId}/service-requests`, { revalidate: 15 })
         .then(r => r.data)
         .catch(() => [] as ServiceRequest[])
     : [] as ServiceRequest[];

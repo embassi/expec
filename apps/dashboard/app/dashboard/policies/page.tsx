@@ -17,10 +17,10 @@ interface Policy {
 }
 
 export default async function PoliciesPage() {
-  const communities = await serverGet<Community[]>('/admin/communities').catch(() => [] as Community[]);
+  const communities = await serverGet<Community[]>('/admin/communities', { revalidate: 60 }).catch(() => [] as Community[]);
   const defaultId = communities[0]?.id ?? '';
   const policy = defaultId
-    ? await serverGet<Policy>(`/admin/communities/${defaultId}/policy`).catch(() => null)
+    ? await serverGet<Policy>(`/admin/communities/${defaultId}/policy`, { revalidate: 60 }).catch(() => null)
     : null;
   return (
     <PoliciesClient

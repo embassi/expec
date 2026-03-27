@@ -14,14 +14,14 @@ interface Membership {
 }
 
 export default async function MembershipsPage() {
-  const communities = await serverGet<Community[]>('/admin/communities').catch(() => [] as Community[]);
+  const communities = await serverGet<Community[]>('/admin/communities', { revalidate: 60 }).catch(() => [] as Community[]);
   const defaultId = communities[0]?.id ?? '';
   const [memberships, units] = await Promise.all([
     defaultId
-      ? serverGet<PaginatedResponse<Membership>>(`/admin/communities/${defaultId}/memberships`).catch(() => ({ data: [], total: 0, limit: 50, offset: 0 }))
+      ? serverGet<PaginatedResponse<Membership>>(`/admin/communities/${defaultId}/memberships`, { revalidate: 15 }).catch(() => ({ data: [], total: 0, limit: 50, offset: 0 }))
       : Promise.resolve({ data: [], total: 0, limit: 50, offset: 0 }),
     defaultId
-      ? serverGet<Unit[]>(`/admin/communities/${defaultId}/units`).catch(() => [] as Unit[])
+      ? serverGet<Unit[]>(`/admin/communities/${defaultId}/units`, { revalidate: 60 }).catch(() => [] as Unit[])
       : Promise.resolve([] as Unit[]),
   ]);
   return (

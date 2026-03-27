@@ -21,6 +21,6 @@ interface User {
 }
 
 export default async function UsersPage() {
-  const users = await serverGet<User[]>('/admin/users').catch(() => [] as User[]);
+  const users = await serverGet<User[]>('/admin/users', { revalidate: 15 }).catch(() => [] as User[]);
   return <UsersClient initialUsers={users} />;
 }

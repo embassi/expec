@@ -7,7 +7,7 @@ interface Overview {
 }
 
 export default async function OverviewPage() {
-  const data = await serverGet<Overview>('/admin/overview').catch(() => ({
+  const data = await serverGet<Overview>('/admin/overview', { revalidate: 30 }).catch(() => ({
     total_communities: 0,
     total_members: 0,
     pending_memberships: 0,

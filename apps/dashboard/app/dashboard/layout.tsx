@@ -8,7 +8,7 @@ interface SessionUser {
 }
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const user = await serverGet<SessionUser>('/me').catch(() => null);
+  const user = await serverGet<SessionUser>('/me', { revalidate: 60 }).catch(() => null);
 
   return (
     <div className="flex min-h-screen">

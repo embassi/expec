@@ -5,10 +5,10 @@ interface Community { id: string; name: string }
 interface Announcement { id: string; title: string; body: string; created_at: string }
 
 export default async function AnnouncementsPage() {
-  const communities = await serverGet<Community[]>('/admin/communities').catch(() => [] as Community[]);
+  const communities = await serverGet<Community[]>('/admin/communities', { revalidate: 60 }).catch(() => [] as Community[]);
   const defaultId = communities[0]?.id ?? '';
   const announcements = defaultId
-    ? await serverGet<{ data: Announcement[] }>(`/admin/communities/${defaultId}/announcements`)
+    ? await serverGet<{ data: Announcement[] }>(`/admin/communities/${defaultId}/announcements`, { revalidate: 30 })
         .then(r => r.data)
         .catch(() => [] as Announcement[])
     : [] as Announcement[];
