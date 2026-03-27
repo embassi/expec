@@ -225,10 +225,6 @@ export class AuthService implements OnModuleInit {
       },
     });
 
-    this.logger.log(
-      `[request-email-otp] email=${JSON.stringify(normalizedEmail)} otp_len=${otp.length} hash_prefix=${otpHash.slice(0, 8)}`,
-    );
-
     if (isDev) {
       this.logger.log(`[DEV] Email OTP for ${normalizedEmail}: ${otp}`);
     } else {
@@ -267,10 +263,6 @@ export class AuthService implements OnModuleInit {
     }
 
     const otpHash = this.hashOtp(normalizedOtp);
-
-    this.logger.log(
-      `[verify-email-otp] email=${JSON.stringify(normalizedEmail)} otp_len=${normalizedOtp.length} stored_hash_prefix=${record.otp_hash.slice(0, 8)} computed_hash_prefix=${otpHash.slice(0, 8)} match=${record.otp_hash === otpHash}`,
-    );
 
     if (record.otp_hash !== otpHash) {
       await this.prisma.otpVerification.update({
