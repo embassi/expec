@@ -6,7 +6,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
 } from 'react-native';
-import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
+import { View as Animated } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { Colors } from '../../lib/colors';
@@ -47,7 +47,7 @@ export default function QrScreen() {
 
   return (
     <View style={styles.container}>
-      <Animated.View entering={FadeIn.duration(300)} style={styles.card}>
+      <Animated style={styles.card}>
         {me?.full_name ? (
           <Text style={styles.name}>{me.full_name}</Text>
         ) : null}
@@ -57,20 +57,16 @@ export default function QrScreen() {
           {isLoading ? (
             <ActivityIndicator size="large" color={Colors.primary} />
           ) : errorMsg ? (
-            <Animated.View entering={FadeIn.duration(200)} style={styles.errorBox}>
+            <Animated style={styles.errorBox}>
               <Text style={styles.errorText}>{errorMsg}</Text>
               <TouchableOpacity style={styles.retryButton} onPress={() => refetch()}>
                 <Text style={styles.retryText}>Retry</Text>
               </TouchableOpacity>
-            </Animated.View>
+            </Animated>
           ) : token ? (
-            <Animated.View
-              key={token}
-              entering={FadeIn.duration(200)}
-              exiting={FadeOut.duration(150)}
-            >
+            <Animated key={token}>
               <QrCode token={token} size={220} />
-            </Animated.View>
+            </Animated>
           ) : null}
         </View>
 
@@ -85,7 +81,7 @@ export default function QrScreen() {
             <Text style={styles.countdownText}>Refreshes in {countdown}s</Text>
           </View>
         )}
-      </Animated.View>
+      </Animated>
     </View>
   );
 }

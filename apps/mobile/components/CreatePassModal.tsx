@@ -11,7 +11,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
-import Animated, { SlideInDown } from 'react-native-reanimated';
+import { View as Animated } from 'react-native';
 import { api } from '../lib/api';
 import { Colors } from '../lib/colors';
 
@@ -81,7 +81,7 @@ export function CreatePassModal({ visible, communities, onClose, onCreated }: Pr
       presentationStyle="pageSheet"
       onRequestClose={handleClose}
     >
-      <Animated.View entering={SlideInDown.springify().damping(18)} style={{ flex: 1 }}>
+      <Animated style={{ flex: 1 }}>
       <KeyboardAvoidingView
         style={styles.container}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -162,7 +162,7 @@ export function CreatePassModal({ visible, communities, onClose, onCreated }: Pr
           </TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>
-      </Animated.View>
+      </Animated>
     </Modal>
   );
 }

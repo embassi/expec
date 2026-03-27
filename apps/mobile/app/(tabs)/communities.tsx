@@ -6,7 +6,7 @@ import {
   ActivityIndicator,
   RefreshControl,
 } from 'react-native';
-import Animated, { FadeInDown } from 'react-native-reanimated';
+import { View as Animated } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import type { ApiCommunity, ApiMembership } from '@simsim/types';
 import { api } from '../../lib/api';
@@ -66,7 +66,7 @@ export default function CommunitiesScreen() {
         const status = item.membership?.approval_status ?? 'unknown';
         const colors = STATUS_COLORS[status] ?? { bg: Colors.surface, text: Colors.textSecondary };
         return (
-          <Animated.View entering={FadeInDown.delay(index * 60).duration(300)} style={styles.card}>
+          <Animated style={styles.card}>
             <View style={styles.cardHeader}>
               <Text style={styles.communityName}>{item.name}</Text>
               <View style={[styles.badge, { backgroundColor: colors.bg }]}>
