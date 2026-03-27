@@ -2,23 +2,37 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
-import { SessionUser } from '@/lib/auth';
+
+type Method = 'phone' | 'email';
+type Step = 'input' | 'otp';
 
 export default function LoginPage() {
   const router = useRouter();
+  const [method, setMethod] = useState<Method>('phone');
   const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
   const [otp, setOtp] = useState('');
-  const [step, setStep] = useState<'phone' | 'otp'>('phone');
+  const [step, setStep] = useState<Step>('input');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  async function requestOtp(e: React.FormEvent) {
+  function switchMethod(m: Method) {
+    setMethod(m);
+    setStep('input');
+    setOtp('');
+    setError('');
+  }
+
+  async function handleRequest(e: React.FormEvent) {
     e.preventDefault();
     setError('');
     setLoading(true);
     try {
-      // Proxied through /api/proxy → backend /auth/request-otp (no auth required)
-      await api.post('/auth/request-otp', { phone_number: phone });
+      if (method === 'phone') {
+        await api.post('/auth/request-otp', { phone_number: phone });
+      } else {
+        await api.post('/auth/request-email-otp', { email });
+      }
       setStep('otp');
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to send OTP');
@@ -27,17 +41,21 @@ export default function LoginPage() {
     }
   }
 
-  async function verifyOtp(e: React.FormEvent) {
+  async function handleVerify(e: React.FormEvent) {
     e.preventDefault();
     setError('');
     setLoading(true);
     try {
-      // BFF login route: calls backend, sets HttpOnly cookie, returns user (not token)
-      const res = await fetch('/api/auth/login', {
+      const endpoint = method === 'phone' ? '/api/auth/login' : '/api/auth/login-email';
+      const body = method === 'phone'
+        ? { phone_number: phone, otp }
+        : { email, otp };
+
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
-        body: JSON.stringify({ phone_number: phone, otp }),
+        body: JSON.stringify(body),
       });
 
       if (!res.ok) {
@@ -45,7 +63,6 @@ export default function LoginPage() {
         throw new Error(err.message ?? 'Invalid OTP');
       }
 
-      // Cookie is now set server-side — no token in JS
       router.replace('/dashboard');
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Invalid OTP');
@@ -54,39 +71,87 @@ export default function LoginPage() {
     }
   }
 
+  const identifier = method === 'phone' ? phone : email;
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8 w-full max-w-sm">
-        <div className="mb-8 text-center">
+        <div className="mb-6 text-center">
           <h1 className="text-2xl font-bold text-gray-900">Simsim</h1>
           <p className="text-sm text-gray-500 mt-1">Community Manager Dashboard</p>
         </div>
 
-        {step === 'phone' ? (
-          <form onSubmit={requestOtp} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Phone number</label>
-              <input
-                type="tel"
-                placeholder="+20..."
-                value={phone}
-                onChange={e => setPhone(e.target.value)}
-                required
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-              />
-            </div>
+        {/* Method toggle */}
+        <div className="flex rounded-lg border border-gray-200 p-1 mb-6 gap-1">
+          <button
+            type="button"
+            onClick={() => switchMethod('phone')}
+            className={`flex-1 text-sm py-1.5 rounded-md font-medium transition-colors ${
+              method === 'phone'
+                ? 'bg-brand-600 text-white'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            WhatsApp
+          </button>
+          <button
+            type="button"
+            onClick={() => switchMethod('email')}
+            className={`flex-1 text-sm py-1.5 rounded-md font-medium transition-colors ${
+              method === 'email'
+                ? 'bg-brand-600 text-white'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            Email
+          </button>
+        </div>
+
+        {step === 'input' ? (
+          <form onSubmit={handleRequest} className="space-y-4">
+            {method === 'phone' ? (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Phone number</label>
+                <input
+                  type="tel"
+                  placeholder="+20..."
+                  value={phone}
+                  onChange={e => setPhone(e.target.value)}
+                  required
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                />
+              </div>
+            ) : (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Email address</label>
+                <input
+                  type="email"
+                  placeholder="you@example.com"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  required
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                />
+              </div>
+            )}
             {error && <p className="text-red-500 text-sm">{error}</p>}
             <button
               type="submit"
               disabled={loading}
               className="w-full bg-brand-600 hover:bg-brand-700 text-white font-medium py-2 rounded-lg text-sm disabled:opacity-50"
             >
-              {loading ? 'Sending…' : 'Send OTP via WhatsApp'}
+              {loading
+                ? 'Sending…'
+                : method === 'phone'
+                ? 'Send OTP via WhatsApp'
+                : 'Send OTP via Email'}
             </button>
           </form>
         ) : (
-          <form onSubmit={verifyOtp} className="space-y-4">
-            <p className="text-sm text-gray-600">Enter the 6-digit code sent to <strong>{phone}</strong></p>
+          <form onSubmit={handleVerify} className="space-y-4">
+            <p className="text-sm text-gray-600">
+              Enter the 6-digit code sent to <strong>{identifier}</strong>
+            </p>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">OTP code</label>
               <input
@@ -110,10 +175,10 @@ export default function LoginPage() {
             </button>
             <button
               type="button"
-              onClick={() => { setStep('phone'); setOtp(''); setError(''); }}
+              onClick={() => { setStep('input'); setOtp(''); setError(''); }}
               className="w-full text-sm text-gray-500 hover:text-gray-700"
             >
-              ← Change number
+              ← Change {method === 'phone' ? 'number' : 'email'}
             </button>
           </form>
         )}

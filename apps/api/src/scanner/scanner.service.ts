@@ -63,8 +63,8 @@ export class ScannerService {
         ScanType.Resident,
         'No approved membership for this community',
         user.id,
-        user.full_name ?? user.phone_number,
-        user.phone_number,
+        user.full_name ?? user.phone_number ?? undefined,
+        user.phone_number ?? undefined,
       );
     }
 
@@ -76,8 +76,8 @@ export class ScannerService {
       scan_type: ScanType.Resident,
       user_id: user.id,
       membership_id: membership.id,
-      resident_name: user.full_name ?? user.phone_number,
-      resident_phone: user.phone_number,
+      resident_name: user.full_name ?? user.phone_number ?? undefined,
+      resident_phone: user.phone_number ?? undefined,
       unit_id: membership.unit_id ?? undefined,
       unit_code: membership.unit?.unit_code ?? undefined,
       result: ScanResult.Granted,
@@ -90,7 +90,7 @@ export class ScannerService {
 
     return {
       result: ScanResult.Granted,
-      resident_name: user.full_name ?? user.phone_number,
+      resident_name: user.full_name ?? user.phone_number ?? undefined,
       unit_code: membership.unit?.unit_code ?? undefined,
       photo_url: user.profile_photo_url ?? undefined,
       community_name: community?.name,
@@ -178,7 +178,7 @@ export class ScannerService {
     return {
       result: ScanResult.Granted,
       guest_name: pass.guest_name,
-      host_name: pass.host_user.full_name ?? pass.host_user.phone_number,
+      host_name: pass.host_user.full_name ?? pass.host_user.phone_number ?? undefined,
       host_unit: pass.host_membership.unit?.unit_code ?? undefined,
     };
   }

@@ -14,6 +14,7 @@ import { ListMembershipsDto } from './dto/list-memberships.dto';
 import { ListServiceRequestsDto } from './dto/list-service-requests.dto';
 import { ListAnnouncementsDto } from './dto/list-announcements.dto';
 import { ListAccessLogsDto } from './dto/list-access-logs.dto';
+import { ListUsersDto } from './dto/list-users.dto';
 import { paginate } from '../common/dto/pagination.dto';
 import { ApprovalStatus, GlobalRoleType, RelationshipType, RoleType, AnnouncementStatus } from '@simsim/types';
 import {
@@ -456,12 +457,24 @@ export class AdminService implements OnModuleInit {
 
   // ─── Users (super admin) ───────────────────────────────────────────────────
 
-  async listUsers() {
+  async listUsers(query?: ListUsersDto) {
+    const where = query?.q
+      ? {
+          OR: [
+            { phone_number: { contains: query.q, mode: 'insensitive' as const } },
+            { full_name: { contains: query.q, mode: 'insensitive' as const } },
+            { email: { contains: query.q, mode: 'insensitive' as const } },
+          ],
+        }
+      : undefined;
+
     return this.prisma.user.findMany({
+      where,
       orderBy: { created_at: 'desc' },
       select: {
         id: true,
         phone_number: true,
+        email: true,
         full_name: true,
         status: true,
         role_type: true,
@@ -485,6 +498,40 @@ export class AdminService implements OnModuleInit {
     return this.prisma.user.update({ where: { id: userId }, data: { role_type: roleType as PrismaUserRoleType } });
   }
 
+  async getUserActivity(userId: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+
+    const [logins, scans] = await Promise.all([
+      // Login history via OTP verifications (used=true = successfully verified)
+      user.phone_number
+        ? this.prisma.otpVerification.findMany({
+            where: { phone_number: user.phone_number, used: true },
+            orderBy: { created_at: 'desc' },
+            take: 20,
+            select: { id: true, created_at: true, phone_number: true },
+          })
+        : [],
+      // Scan history from access logs
+      this.prisma.accessLog.findMany({
+        where: { user_id: userId },
+        orderBy: { scanned_at: 'desc' },
+        take: 50,
+        select: {
+          id: true,
+          scanned_at: true,
+          result: true,
+          scanner_code: true,
+          unit_code: true,
+          denial_reason: true,
+          community: { select: { name: true } },
+        },
+      }),
+    ]);
+
+    return { logins, scans };
+  }
+
   async resendInvite(membershipId: string, actingUser: any) {
     const membership = await this.prisma.membership.findUnique({
       where: { id: membershipId },
@@ -498,7 +545,7 @@ export class AdminService implements OnModuleInit {
     this.assertCommunityAccess(actingUser, membership.community_id);
 
     await this.queue.enqueue<SendWelcomeJobData>(QUEUE_JOBS.SEND_WELCOME, {
-      phoneNumber: membership.user.phone_number,
+      phoneNumber: membership.user.phone_number ?? '',
       communityName: membership.community.name,
     });
     return { message: 'Invite resent' };

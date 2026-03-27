@@ -13,6 +13,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { QueueService, QUEUE_JOBS } from '../queue/queue.service';
 import { SendOtpJobData } from '../queue/job-types';
 import { Twilio } from 'twilio';
+import { Resend } from 'resend';
 import { createHmac } from 'crypto';
 import * as Sentry from '@sentry/nestjs';
 
@@ -23,6 +24,7 @@ const OTP_RESEND_COOLDOWN_MS = 60_000; // 60 seconds
 export class AuthService implements OnModuleInit {
   private readonly logger = new Logger(AuthService.name);
   private twilioClient: Twilio;
+  private resend: Resend;
 
   constructor(
     private prisma: PrismaService,
@@ -34,6 +36,10 @@ export class AuthService implements OnModuleInit {
       this.config.get('TWILIO_ACCOUNT_SID'),
       this.config.get('TWILIO_AUTH_TOKEN'),
     );
+    const resendKey = this.config.get<string>('RESEND_API_KEY');
+    if (resendKey) {
+      this.resend = new Resend(resendKey);
+    }
   }
 
   async onModuleInit() {
@@ -177,6 +183,145 @@ export class AuthService implements OnModuleInit {
         role_type: user.role_type,
       },
     };
+  }
+
+  async requestEmailOtp(email: string): Promise<{ message: string }> {
+    const normalizedEmail = email.toLowerCase().trim();
+
+    // Resend cooldown
+    const recent = await this.prisma.otpVerification.findFirst({
+      where: {
+        email: normalizedEmail,
+        created_at: { gt: new Date(Date.now() - OTP_RESEND_COOLDOWN_MS) },
+      },
+      orderBy: { created_at: 'desc' },
+    });
+
+    if (recent) {
+      const waitMs = recent.created_at.getTime() + OTP_RESEND_COOLDOWN_MS - Date.now();
+      const waitSec = Math.ceil(waitMs / 1000);
+      throw new HttpException(
+        { message: `Please wait ${waitSec}s before requesting another OTP` },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
+    // Invalidate previous unused OTPs for this email
+    await this.prisma.otpVerification.updateMany({
+      where: { email: normalizedEmail, used: false },
+      data: { used: true },
+    });
+
+    const isDev = this.config.get('NODE_ENV') === 'development';
+    const otp = isDev ? '123456' : this.generateOtp();
+    const otpHash = this.hashOtp(otp);
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+
+    await this.prisma.otpVerification.create({
+      data: {
+        email: normalizedEmail,
+        otp_hash: otpHash,
+        expires_at: expiresAt,
+      },
+    });
+
+    if (isDev) {
+      this.logger.log(`[DEV] Email OTP for ${normalizedEmail}: ${otp}`);
+    } else {
+      await this.sendEmailOtp(normalizedEmail, otp);
+    }
+
+    return { message: isDev ? 'OTP sent (dev: use 123456)' : 'OTP sent via email' };
+  }
+
+  async verifyEmailOtp(
+    email: string,
+    otp: string,
+  ): Promise<{ access_token: string; user: any }> {
+    const normalizedEmail = email.toLowerCase().trim();
+
+    const record = await this.prisma.otpVerification.findFirst({
+      where: {
+        email: normalizedEmail,
+        used: false,
+        expires_at: { gt: new Date() },
+      },
+      orderBy: { created_at: 'desc' },
+    });
+
+    if (!record) {
+      throw new UnauthorizedException('Invalid or expired OTP');
+    }
+
+    if (record.attempts >= MAX_OTP_ATTEMPTS) {
+      await this.prisma.otpVerification.update({
+        where: { id: record.id },
+        data: { used: true },
+      });
+      throw new UnauthorizedException('Too many failed attempts. Please request a new OTP.');
+    }
+
+    const otpHash = this.hashOtp(otp);
+
+    if (record.otp_hash !== otpHash) {
+      await this.prisma.otpVerification.update({
+        where: { id: record.id },
+        data: { attempts: { increment: 1 } },
+      });
+      const remaining = MAX_OTP_ATTEMPTS - record.attempts - 1;
+      throw new UnauthorizedException(
+        remaining > 0
+          ? `Invalid OTP. ${remaining} attempt${remaining === 1 ? '' : 's'} remaining.`
+          : 'Invalid OTP',
+      );
+    }
+
+    await this.prisma.otpVerification.update({
+      where: { id: record.id },
+      data: { used: true },
+    });
+
+    // Upsert user by email
+    const user = await this.prisma.user.upsert({
+      where: { email: normalizedEmail },
+      update: { status: 'active' },
+      create: { email: normalizedEmail, role_type: 'user', status: 'active' },
+    });
+
+    const accessToken = this.jwtService.sign({ sub: user.id });
+
+    return {
+      access_token: accessToken,
+      user: {
+        id: user.id,
+        email: user.email,
+        phone_number: user.phone_number,
+        full_name: user.full_name,
+        status: user.status,
+        role_type: user.role_type,
+      },
+    };
+  }
+
+  private async sendEmailOtp(email: string, otp: string): Promise<void> {
+    if (!this.resend) {
+      this.logger.warn('Resend not configured — email OTP not sent');
+      return;
+    }
+    const from = this.config.get<string>('EMAIL_FROM') ?? 'noreply@simsim.app';
+    try {
+      await this.resend.emails.send({
+        from,
+        to: email,
+        subject: 'Your Simsim verification code',
+        html: `<p>Your Simsim verification code is: <strong style="font-size:24px;letter-spacing:4px">${otp}</strong></p><p>This code expires in 5 minutes. Do not share it.</p>`,
+      });
+      this.logger.log(`Email OTP sent to ${email}`);
+    } catch (err) {
+      this.logger.error(`Failed to send email OTP to ${email}`, err);
+      Sentry.captureException(err, { tags: { event: 'email_otp_send_failed' } });
+      throw err;
+    }
   }
 
   // ─── Helpers ──────────────────────────────────────────────────────────────

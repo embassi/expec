@@ -105,7 +105,8 @@ enum ServiceRequestStatus {
 
 model User {
   id                String      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  phone_number      String      @unique
+  phone_number      String?     @unique
+  email             String?     @unique
   full_name         String?
   profile_photo_url String?
   status            UserStatus  @default(active)
@@ -125,7 +126,8 @@ model User {
 
 model OtpVerification {
   id           String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  phone_number String
+  phone_number String?
+  email        String?
   otp_hash     String   // HMAC-SHA256 hash — plaintext never stored
   expires_at   DateTime
   used         Boolean  @default(false)
@@ -134,6 +136,8 @@ model OtpVerification {
 
   @@index([phone_number])
   @@index([phone_number, used, expires_at]) // fast lookup for active OTPs
+  @@index([email])
+  @@index([email, used, expires_at])
   @@map("otp_verifications")
 }
 

@@ -25,6 +25,7 @@ import { ListMembershipsDto } from './dto/list-memberships.dto';
 import { ListServiceRequestsDto } from './dto/list-service-requests.dto';
 import { ListAnnouncementsDto } from './dto/list-announcements.dto';
 import { ListAccessLogsDto } from './dto/list-access-logs.dto';
+import { ListUsersDto } from './dto/list-users.dto';
 import { User } from '@prisma/client';
 import { Matches } from 'class-validator';
 
@@ -244,14 +245,20 @@ export class AdminController {
 
   @UseGuards(SuperAdminGuard)
   @Get('users')
-  listUsers() {
-    return this.adminService.listUsers();
+  listUsers(@Query() query: ListUsersDto) {
+    return this.adminService.listUsers(query);
   }
 
   @UseGuards(SuperAdminGuard)
   @Patch('users/:id/role')
   updateUserRole(@Param('id') id: string, @Body('role_type') roleType: string) {
     return this.adminService.updateUserRole(id, roleType);
+  }
+
+  @UseGuards(SuperAdminGuard)
+  @Get('users/:id/activity')
+  getUserActivity(@Param('id') id: string) {
+    return this.adminService.getUserActivity(id);
   }
 
   // ─── Resend Invite ────────────────────────────────────────────────────────
