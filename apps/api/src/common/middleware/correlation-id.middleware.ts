@@ -15,7 +15,7 @@ export class CorrelationIdMiddleware implements NestMiddleware {
     const existing = req.headers[CORRELATION_ID_HEADER];
     const correlationId = (Array.isArray(existing) ? existing[0] : existing) ?? randomUUID();
     req.correlationId = correlationId;
-    res.header(CORRELATION_ID_HEADER, correlationId);
+    res.setHeader(CORRELATION_ID_HEADER, correlationId);
     next();
   }
 }

@@ -97,6 +97,8 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
       this.logger.warn(`Queue not available — worker for ${jobName} not registered`);
       return;
     }
+    // pg-boss v12: queues must be explicitly created before workers can register
+    await this.boss.createQueue(jobName);
     await this.boss.work<T>(jobName, options ?? {}, handler);
     this.logger.log(`Worker registered for ${jobName}`);
   }
