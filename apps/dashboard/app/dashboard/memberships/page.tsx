@@ -1,4 +1,4 @@
-import { serverGet } from '@/lib/server-api';
+import { createSupabaseServerClient } from '@/lib/supabase-server';
 import MembershipsClient from './memberships-client';
 import type { PaginatedResponse } from '@simsim/types';
 
@@ -14,19 +14,47 @@ interface Membership {
 }
 
 export default async function MembershipsPage() {
-  const communities = await serverGet<Community[]>('/admin/communities', { revalidate: 60 }).catch(() => [] as Community[]);
-  const defaultId = communities[0]?.id ?? '';
-  const [memberships, units] = await Promise.all([
+  const supabase = await createSupabaseServerClient(15);
+
+  const { data: communities } = await supabase
+    .from('communities')
+    .select('id, name')
+    .order('created_at', { ascending: false });
+
+  const defaultId = communities?.[0]?.id ?? '';
+
+  const [membershipsResult, units] = await Promise.all([
     defaultId
-      ? serverGet<PaginatedResponse<Membership>>(`/admin/communities/${defaultId}/memberships`, { revalidate: 15 }).catch(() => ({ data: [], total: 0, limit: 50, offset: 0 }))
-      : Promise.resolve({ data: [], total: 0, limit: 50, offset: 0 }),
+      ? supabase
+          .from('memberships')
+          .select(
+            'id, approval_status, relationship_type, role_type, user:user_id(phone_number, full_name, status), unit:unit_id(unit_code)',
+            { count: 'exact' },
+          )
+          .eq('community_id', defaultId)
+          .order('created_at', { ascending: false })
+          .range(0, 49)
+      : Promise.resolve({ data: [], count: 0, error: null }),
     defaultId
-      ? serverGet<Unit[]>(`/admin/communities/${defaultId}/units`, { revalidate: 60 }).catch(() => [] as Unit[])
+      ? supabase
+          .from('units')
+          .select('id, unit_code')
+          .eq('community_id', defaultId)
+          .order('unit_code')
+          .then(({ data }) => (data ?? []) as Unit[])
       : Promise.resolve([] as Unit[]),
   ]);
+
+  const memberships: PaginatedResponse<Membership> = {
+    data: (membershipsResult.data ?? []) as unknown as Membership[],
+    total: membershipsResult.count ?? 0,
+    limit: 50,
+    offset: 0,
+  };
+
   return (
     <MembershipsClient
-      initialCommunities={communities}
+      initialCommunities={(communities ?? []) as Community[]}
       initialMemberships={memberships}
       initialUnits={units}
       defaultCommunityId={defaultId}

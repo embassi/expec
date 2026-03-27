@@ -1,4 +1,4 @@
-import { serverGet } from '@/lib/server-api';
+import { createSupabaseServerClient } from '@/lib/supabase-server';
 import ServiceRequestsClient from './service-requests-client';
 
 interface Community { id: string; name: string }
@@ -12,16 +12,29 @@ interface ServiceRequest {
 }
 
 export default async function ServiceRequestsPage() {
-  const communities = await serverGet<Community[]>('/admin/communities', { revalidate: 60 }).catch(() => [] as Community[]);
-  const defaultId = communities[0]?.id ?? '';
-  const requests = defaultId
-    ? await serverGet<{ data: ServiceRequest[] }>(`/admin/communities/${defaultId}/service-requests`, { revalidate: 15 })
-        .then(r => r.data)
-        .catch(() => [] as ServiceRequest[])
-    : [] as ServiceRequest[];
+  const supabase = await createSupabaseServerClient(15);
+
+  const { data: communities } = await supabase
+    .from('communities')
+    .select('id, name')
+    .order('created_at', { ascending: false });
+
+  const defaultId = communities?.[0]?.id ?? '';
+
+  const requests: ServiceRequest[] = defaultId
+    ? await supabase
+        .from('service_requests')
+        .select('id, subject, description, status, created_at, user:user_id(full_name, phone_number)')
+        .eq('community_id', defaultId)
+        .order('created_at', { ascending: false })
+        .then(({ data }) =>
+          (data ?? []).map(r => ({ ...r, title: r.subject ?? '' })) as unknown as ServiceRequest[],
+        )
+    : [];
+
   return (
     <ServiceRequestsClient
-      initialCommunities={communities}
+      initialCommunities={(communities ?? []) as Community[]}
       initialRequests={requests}
       defaultCommunityId={defaultId}
     />

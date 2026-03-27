@@ -1,4 +1,4 @@
-import { serverGet } from '@/lib/server-api';
+import { createSupabaseServerClient } from '@/lib/supabase-server';
 import UsersClient from './users-client';
 
 interface Membership {
@@ -21,6 +21,14 @@ interface User {
 }
 
 export default async function UsersPage() {
-  const users = await serverGet<User[]>('/admin/users', { revalidate: 15 }).catch(() => [] as User[]);
-  return <UsersClient initialUsers={users} />;
+  const supabase = await createSupabaseServerClient(15);
+
+  const { data } = await supabase
+    .from('users')
+    .select(
+      'id, phone_number, email, full_name, status, role_type, created_at, memberships(id, role_type, approval_status, community:community_id(id, name), unit:unit_id(unit_code))',
+    )
+    .order('created_at', { ascending: false });
+
+  return <UsersClient initialUsers={(data ?? []) as unknown as User[]} />;
 }

@@ -1,4 +1,4 @@
-import { serverGet } from '@/lib/server-api';
+import { createSupabaseServerClient } from '@/lib/supabase-server';
 import ScannersClient from './scanners-client';
 
 interface Community { id: string; name: string }
@@ -13,14 +13,27 @@ interface Scanner {
 }
 
 export default async function ScannersPage() {
-  const communities = await serverGet<Community[]>('/admin/communities', { revalidate: 60 }).catch(() => [] as Community[]);
-  const defaultId = communities[0]?.id ?? '';
-  const scanners = defaultId
-    ? await serverGet<Scanner[]>(`/admin/communities/${defaultId}/scanners`, { revalidate: 60 }).catch(() => [] as Scanner[])
-    : [] as Scanner[];
+  const supabase = await createSupabaseServerClient(60);
+
+  const { data: communities } = await supabase
+    .from('communities')
+    .select('id, name')
+    .order('created_at', { ascending: false });
+
+  const defaultId = communities?.[0]?.id ?? '';
+
+  const scanners: Scanner[] = defaultId
+    ? await supabase
+        .from('scanners')
+        .select('id, scanner_name, scanner_code, device_key, is_active, location_label, assigned_user:assigned_user_id(full_name, phone_number)')
+        .eq('community_id', defaultId)
+        .order('created_at', { ascending: false })
+        .then(({ data }) => (data ?? []) as unknown as Scanner[])
+    : [];
+
   return (
     <ScannersClient
-      initialCommunities={communities}
+      initialCommunities={(communities ?? []) as Community[]}
       initialScanners={scanners}
       defaultCommunityId={defaultId}
     />

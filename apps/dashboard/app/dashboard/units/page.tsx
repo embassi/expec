@@ -1,14 +1,33 @@
-import { serverGet } from '@/lib/server-api';
+import { createSupabaseServerClient } from '@/lib/supabase-server';
 import UnitsClient from './units-client';
 
 interface Community { id: string; name: string }
 interface Unit { id: string; unit_code: string; floor: string | null; building: string | null }
 
 export default async function UnitsPage() {
-  const communities = await serverGet<Community[]>('/admin/communities', { revalidate: 60 }).catch(() => [] as Community[]);
-  const defaultId = communities[0]?.id ?? '';
-  const units = defaultId
-    ? await serverGet<Unit[]>(`/admin/communities/${defaultId}/units`, { revalidate: 60 }).catch(() => [] as Unit[])
+  const supabase = await createSupabaseServerClient(60);
+
+  const { data: communities } = await supabase
+    .from('communities')
+    .select('id, name')
+    .order('created_at', { ascending: false });
+
+  const defaultId = communities?.[0]?.id ?? '';
+
+  const units: Unit[] = defaultId
+    ? await supabase
+        .from('units')
+        .select('id, unit_code, floor, building')
+        .eq('community_id', defaultId)
+        .order('unit_code')
+        .then(({ data }) => data ?? [])
     : [];
-  return <UnitsClient initialCommunities={communities} initialUnits={units} defaultCommunityId={defaultId} />;
+
+  return (
+    <UnitsClient
+      initialCommunities={(communities ?? []) as Community[]}
+      initialUnits={units}
+      defaultCommunityId={defaultId}
+    />
+  );
 }
