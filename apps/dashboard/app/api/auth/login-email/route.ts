@@ -23,16 +23,34 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(err, { status: backendRes.status });
   }
 
-  const { access_token, user } = await backendRes.json();
+  let data: { access_token: string; user: unknown };
+  try {
+    data = await backendRes.json();
+  } catch (e) {
+    console.error('[login-email] failed to parse backend response:', e);
+    return NextResponse.json({ message: 'Invalid API response' }, { status: 502 });
+  }
+
+  const { access_token, user } = data;
+  if (!access_token) {
+    console.error('[login-email] missing access_token in response:', data);
+    return NextResponse.json({ message: 'No token returned' }, { status: 502 });
+  }
+
   const response = NextResponse.json({ user });
 
-  response.cookies.set('simsim_session', access_token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict',
-    maxAge: 60 * 60 * 24 * 30,
-    path: '/',
-  });
+  try {
+    response.cookies.set('simsim_session', access_token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 60 * 60 * 24 * 30,
+      path: '/',
+    });
+  } catch (e) {
+    console.error('[login-email] failed to set cookie:', e);
+    return NextResponse.json({ message: 'Failed to set session' }, { status: 500 });
+  }
 
   return response;
 }
