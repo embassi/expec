@@ -1,11 +1,14 @@
-import { Controller, Post, Body, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Post, Body, HttpCode, HttpStatus, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
+import { AuthGuard } from '@nestjs/passport';
 import { AuthService } from './auth.service';
 import { RequestOtpDto } from './dto/request-otp.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { RequestEmailOtpDto } from './dto/request-email-otp.dto';
 import { VerifyEmailOtpDto } from './dto/verify-email-otp.dto';
 import { Public } from '../common/decorators/public.decorator';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { User } from '@prisma/client';
 
 /**
  * Auth endpoints get a tighter IP-level rate limit than the global default.
@@ -40,5 +43,17 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   verifyEmailOtp(@Body() dto: VerifyEmailOtpDto) {
     return this.authService.verifyEmailOtp(dto.email, dto.otp);
+  }
+
+  /**
+   * Called by the dashboard/mobile after successful Supabase Auth login.
+   * Ensures a matching row exists in our users table and returns it.
+   * The Supabase JWT is verified by the JWT guard before this runs.
+   */
+  @Post('sync-user')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(AuthGuard('jwt'))
+  syncUser(@CurrentUser() user: User) {
+    return this.authService.syncUser(user);
   }
 }

@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { api } from '@/lib/api';
+import { createSupabaseClient } from '@/lib/supabase';
 
 type Method = 'phone' | 'email';
 type Step = 'input' | 'otp';
@@ -16,6 +16,8 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
+  const supabase = createSupabaseClient();
+
   function switchMethod(m: Method) {
     setMethod(m);
     setStep('input');
@@ -29,9 +31,14 @@ export default function LoginPage() {
     setLoading(true);
     try {
       if (method === 'phone') {
-        await api.post('/auth/request-otp', { phone_number: phone });
+        const { error } = await supabase.auth.signInWithOtp({
+          phone,
+          options: { channel: 'whatsapp' },
+        });
+        if (error) throw new Error(error.message);
       } else {
-        await api.post('/auth/request-email-otp', { email });
+        const { error } = await supabase.auth.signInWithOtp({ email });
+        if (error) throw new Error(error.message);
       }
       setStep('otp');
     } catch (err: unknown) {
@@ -46,21 +53,39 @@ export default function LoginPage() {
     setError('');
     setLoading(true);
     try {
-      const endpoint = method === 'phone' ? '/api/auth/login' : '/api/auth/login-email';
-      const body = method === 'phone'
-        ? { phone_number: phone, otp }
-        : { email, otp };
+      let sessionData;
+      if (method === 'phone') {
+        const { data, error } = await supabase.auth.verifyOtp({
+          phone,
+          token: otp,
+          type: 'sms',
+        });
+        if (error) throw new Error(error.message);
+        sessionData = data;
+      } else {
+        const { data, error } = await supabase.auth.verifyOtp({
+          email,
+          token: otp,
+          type: 'email',
+        });
+        if (error) throw new Error(error.message);
+        sessionData = data;
+      }
 
-      const res = await fetch(endpoint, {
+      const accessToken = sessionData.session?.access_token;
+      if (!accessToken) throw new Error('No session returned');
+
+      // Store the Supabase JWT as an HttpOnly cookie for SSR and set up our user
+      const res = await fetch('/api/auth/callback', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
-        body: JSON.stringify(body),
+        body: JSON.stringify({ access_token: accessToken, refresh_token: sessionData.session?.refresh_token }),
       });
 
       if (!res.ok) {
-        const err = await res.json().catch(() => ({ message: 'Invalid OTP' }));
-        throw new Error(err.message ?? 'Invalid OTP');
+        const err = await res.json().catch(() => ({ message: 'Login failed' }));
+        throw new Error(err.message ?? 'Login failed');
       }
 
       router.replace('/dashboard');

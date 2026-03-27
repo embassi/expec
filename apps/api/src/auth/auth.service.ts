@@ -55,6 +55,29 @@ export class AuthService implements OnModuleInit {
     );
   }
 
+  /**
+   * Called after successful Supabase Auth login.
+   * The JWT strategy has already found/created the user in validate().
+   * This endpoint simply returns the full user record so the client
+   * can store role/membership info alongside the Supabase session.
+   */
+  async syncUser(user: User) {
+    return this.prisma.user.findUnique({
+      where: { id: user.id },
+      include: {
+        memberships: {
+          select: {
+            id: true,
+            role_type: true,
+            community_id: true,
+            approval_status: true,
+            community: { select: { id: true, name: true } },
+          },
+        },
+      },
+    });
+  }
+
   async requestOtp(rawPhone: string): Promise<{ message: string }> {
     const phoneNumber = this.normalizePhone(rawPhone);
 

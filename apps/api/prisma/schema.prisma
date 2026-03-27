@@ -104,15 +104,16 @@ enum ServiceRequestStatus {
 // ─── Users ────────────────────────────────────────────────────────────────────
 
 model User {
-  id                String      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  phone_number      String?     @unique
-  email             String?     @unique
+  id                String       @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  auth_user_id      String?      @unique @db.Uuid
+  phone_number      String?      @unique
+  email             String?      @unique
   full_name         String?
   profile_photo_url String?
-  status            UserStatus  @default(active)
+  status            UserStatus   @default(active)
   role_type         UserRoleType @default(user)
-  created_at        DateTime    @default(now())
-  updated_at        DateTime    @default(now()) @updatedAt
+  created_at        DateTime     @default(now())
+  updated_at        DateTime     @default(now()) @updatedAt
 
   memberships      Membership[]
   guest_passes     GuestPass[]
