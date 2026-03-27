@@ -20,6 +20,8 @@ export class AccessLogsService implements OnModuleInit {
     if (!boss) return;
 
     try {
+      // pg-boss v12: queues must be created before schedule/work can use them
+      await boss.createQueue(QUEUE_JOBS.ARCHIVE_ACCESS_LOGS);
       await boss.schedule(
         QUEUE_JOBS.ARCHIVE_ACCESS_LOGS,
         '0 2 * * *', // daily at 02:00 UTC
