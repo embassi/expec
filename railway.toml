@@ -1,8 +1,5 @@
 [build]
-builder = "nixpacks"
-buildCommand = "pnpm install && pnpm --filter api prisma:generate && pnpm --filter api build"
+builder = "dockerfile"
 
 [deploy]
-# Run from apps/api so both prisma migrate deploy and node dist/main resolve correctly.
-startCommand = "cd apps/api && pnpm exec prisma migrate deploy && node dist/main"
 restartPolicyType = "on_failure"

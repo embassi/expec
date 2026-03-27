@@ -1,0 +1,8 @@
+node_modules
+.next
+dist
+.expo
+*.tsbuildinfo
+apps/mobile
+apps/scanner
+apps/dashboard
