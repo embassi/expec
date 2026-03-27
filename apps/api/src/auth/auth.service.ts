@@ -290,12 +290,15 @@ export class AuthService implements OnModuleInit {
       data: { used: true },
     });
 
-    // Upsert user by email
-    const user = await this.prisma.user.upsert({
-      where: { email: normalizedEmail },
-      update: { status: 'active' },
-      create: { email: normalizedEmail, role_type: 'user', status: 'active' },
-    });
+    // Find-or-create user by email (avoids ON CONFLICT issue with partial unique index)
+    let user = await this.prisma.user.findFirst({ where: { email: normalizedEmail } });
+    if (user) {
+      user = await this.prisma.user.update({ where: { id: user.id }, data: { status: 'active' } });
+    } else {
+      user = await this.prisma.user.create({
+        data: { email: normalizedEmail, role_type: 'user', status: 'active' },
+      });
+    }
 
     const accessToken = this.jwtService.sign({ sub: user.id });
 
