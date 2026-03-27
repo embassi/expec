@@ -239,6 +239,7 @@ export class AuthService implements OnModuleInit {
     otp: string,
   ): Promise<{ access_token: string; user: any }> {
     const normalizedEmail = email.toLowerCase().trim();
+    const normalizedOtp = otp.trim().replace(/\D/g, '');
 
     const record = await this.prisma.otpVerification.findFirst({
       where: {
@@ -261,7 +262,7 @@ export class AuthService implements OnModuleInit {
       throw new UnauthorizedException('Too many failed attempts. Please request a new OTP.');
     }
 
-    const otpHash = this.hashOtp(otp);
+    const otpHash = this.hashOtp(normalizedOtp);
 
     if (record.otp_hash !== otpHash) {
       await this.prisma.otpVerification.update({

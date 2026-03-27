@@ -160,7 +160,8 @@ export default function LoginPage() {
                 maxLength={6}
                 placeholder="123456"
                 value={otp}
-                onChange={e => setOtp(e.target.value)}
+                onChange={e => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                autoComplete="one-time-code"
                 required
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 tracking-widest text-center text-lg"
               />
