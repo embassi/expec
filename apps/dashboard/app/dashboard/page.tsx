@@ -1,5 +1,4 @@
-'use client';
-import { useFetch } from '@/lib/hooks';
+import { serverGet } from '@/lib/server-api';
 
 interface Overview {
   total_communities: number;
@@ -7,16 +6,20 @@ interface Overview {
   pending_memberships: number;
 }
 
-export default function OverviewPage() {
-  const { data } = useFetch<Overview>('/admin/overview');
+export default async function OverviewPage() {
+  const data = await serverGet<Overview>('/admin/overview').catch(() => ({
+    total_communities: 0,
+    total_members: 0,
+    pending_memberships: 0,
+  }));
 
   return (
     <div>
       <h2 className="text-xl font-semibold mb-6">Overview</h2>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <StatCard label="Communities" value={data?.total_communities ?? 0} />
-        <StatCard label="Total Members" value={data?.total_members ?? 0} />
-        <StatCard label="Pending Approvals" value={data?.pending_memberships ?? 0} />
+        <StatCard label="Communities" value={data.total_communities} />
+        <StatCard label="Total Members" value={data.total_members} />
+        <StatCard label="Pending Approvals" value={data.pending_memberships} />
       </div>
     </div>
   );
