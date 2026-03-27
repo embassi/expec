@@ -6,17 +6,22 @@ WORKDIR /app
 # Copy everything
 COPY . .
 
-# Install all dependencies
+# Install all dependencies (including devDeps for build tools)
 RUN pnpm install --no-frozen-lockfile
 
-# Build shared types so the API can import them
-RUN cd packages/types && pnpm build
+# Build shared types so the API can import them at runtime
+WORKDIR /app/packages/types
+RUN pnpm build
 
-# Generate Prisma client + compile NestJS
-RUN cd apps/api && pnpm exec prisma generate && pnpm exec nest build
-
-# Switch into the API package for runtime
+# Generate Prisma client
 WORKDIR /app/apps/api
+RUN pnpm exec prisma generate
+
+# Compile NestJS — output goes to /app/apps/api/dist/
+RUN pnpm exec nest build
+
+# Hard-fail if the build didn't produce the expected entry point
+RUN test -f dist/main.js || (echo "ERROR: dist/main.js not found after nest build" && exit 1)
 
 EXPOSE 3000
 
