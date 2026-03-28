@@ -1,17 +1,19 @@
-/**
- * All dashboard API calls are proxied through /api/proxy/[...path].
- * The Next.js proxy route reads the HttpOnly session cookie server-side
- * and injects the Authorization: Bearer header before forwarding to the API.
- * This keeps the JWT entirely off client-side JavaScript.
- */
-const PROXY_BASE = '/api/proxy';
+import { createSupabaseClient } from './supabase';
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
+
+async function getToken(): Promise<string | undefined> {
+  const { data: { session } } = await createSupabaseClient().auth.getSession();
+  return session?.access_token;
+}
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const res = await fetch(`${PROXY_BASE}${path}`, {
+  const token = await getToken();
+  const res = await fetch(`${API_BASE}${path}`, {
     ...options,
-    credentials: 'same-origin',
     headers: {
       'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...options.headers,
     },
   });

@@ -11,7 +11,9 @@ export async function middleware(req: NextRequest) {
       cookies: {
         getAll: () => req.cookies.getAll(),
         setAll: (cookiesToSet) => {
-          cookiesToSet.forEach(({ name, value }) => requestHeaders.set(`cookie`, `${name}=${value}`));
+          cookiesToSet.forEach(({ name, value, options }) => {
+            requestHeaders.append('set-cookie', `${name}=${value}; Path=${options?.path ?? '/'}; HttpOnly; SameSite=Lax`);
+          });
         },
       },
     },
@@ -19,24 +21,13 @@ export async function middleware(req: NextRequest) {
 
   const { data: { session } } = await supabase.auth.getSession();
 
-  // Inject the access token as a header so the BFF proxy can read it
-  // without needing its own Supabase client call.
-  if (session?.access_token) {
-    requestHeaders.set('x-access-token', session.access_token);
-  }
-
-  const res = NextResponse.next({ request: { headers: requestHeaders } });
-
-  // Refresh session cookies if needed
-  supabase.auth.getSession(); // triggers cookie refresh via setAll if token was refreshed
-
-  if (!session && req.nextUrl.pathname.startsWith('/dashboard')) {
+  if (!session) {
     return NextResponse.redirect(new URL('/login', req.url));
   }
 
-  return res;
+  return NextResponse.next({ request: { headers: requestHeaders } });
 }
 
 export const config = {
-  matcher: ['/dashboard/:path*', '/api/proxy/:path*'],
+  matcher: ['/dashboard/:path*'],
 };
