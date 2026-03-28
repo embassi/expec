@@ -1,4 +1,4 @@
-import { createSupabaseServerClient } from '@/lib/supabase-server';
+import { createSupabaseServiceClient } from '@/lib/supabase-service';
 import ServiceRequestsClient from './service-requests-client';
 
 interface Community { id: string; name: string }
@@ -11,8 +11,10 @@ interface ServiceRequest {
   user: { full_name: string | null; phone_number: string };
 }
 
+export const revalidate = 15;
+
 export default async function ServiceRequestsPage() {
-  const supabase = await createSupabaseServerClient(15);
+  const supabase = createSupabaseServiceClient();
 
   const { data: communities } = await supabase
     .from('communities')

@@ -1,11 +1,13 @@
-import { createSupabaseServerClient } from '@/lib/supabase-server';
+import { createSupabaseServiceClient } from '@/lib/supabase-service';
 import UnitsClient from './units-client';
 
 interface Community { id: string; name: string }
 interface Unit { id: string; unit_code: string; floor: string | null; building: string | null }
 
+export const revalidate = 60;
+
 export default async function UnitsPage() {
-  const supabase = await createSupabaseServerClient(60);
+  const supabase = createSupabaseServiceClient();
 
   const { data: communities } = await supabase
     .from('communities')

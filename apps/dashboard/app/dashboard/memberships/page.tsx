@@ -1,4 +1,4 @@
-import { createSupabaseServerClient } from '@/lib/supabase-server';
+import { createSupabaseServiceClient } from '@/lib/supabase-service';
 import MembershipsClient from './memberships-client';
 import type { PaginatedResponse } from '@simsim/types';
 
@@ -13,8 +13,10 @@ interface Membership {
   unit: { unit_code: string } | null;
 }
 
+export const revalidate = 15;
+
 export default async function MembershipsPage() {
-  const supabase = await createSupabaseServerClient(15);
+  const supabase = createSupabaseServiceClient();
 
   const { data: communities } = await supabase
     .from('communities')

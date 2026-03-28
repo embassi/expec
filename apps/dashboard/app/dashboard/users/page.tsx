@@ -1,4 +1,4 @@
-import { createSupabaseServerClient } from '@/lib/supabase-server';
+import { createSupabaseServiceClient } from '@/lib/supabase-service';
 import UsersClient from './users-client';
 
 interface Membership {
@@ -20,8 +20,10 @@ interface User {
   memberships: Membership[];
 }
 
+export const revalidate = 30;
+
 export default async function UsersPage() {
-  const supabase = await createSupabaseServerClient(15);
+  const supabase = createSupabaseServiceClient();
 
   const { data } = await supabase
     .from('users')

@@ -1,4 +1,4 @@
-import { createSupabaseServerClient } from '@/lib/supabase-server';
+import { createSupabaseServiceClient } from '@/lib/supabase-service';
 import PoliciesClient from './policies-client';
 
 interface Community { id: string; name: string }
@@ -16,8 +16,10 @@ interface Policy {
   guest_pass_service_usage_limit: number;
 }
 
+export const revalidate = 60;
+
 export default async function PoliciesPage() {
-  const supabase = await createSupabaseServerClient(60);
+  const supabase = createSupabaseServiceClient();
 
   const { data: communities } = await supabase
     .from('communities')

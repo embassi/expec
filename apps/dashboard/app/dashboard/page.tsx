@@ -1,7 +1,9 @@
-import { createSupabaseServerClient } from '@/lib/supabase-server';
+import { createSupabaseServiceClient } from '@/lib/supabase-service';
+
+export const revalidate = 30;
 
 export default async function OverviewPage() {
-  const supabase = await createSupabaseServerClient(30);
+  const supabase = createSupabaseServiceClient();
 
   const [{ count: total_communities }, { count: total_members }, { count: pending_memberships }] =
     await Promise.all([

@@ -1,4 +1,4 @@
-import { createSupabaseServerClient } from '@/lib/supabase-server';
+import { createSupabaseServiceClient } from '@/lib/supabase-service';
 import ScannersClient from './scanners-client';
 
 interface Community { id: string; name: string }
@@ -12,8 +12,10 @@ interface Scanner {
   assigned_user?: { full_name: string | null; phone_number: string } | null;
 }
 
+export const revalidate = 60;
+
 export default async function ScannersPage() {
-  const supabase = await createSupabaseServerClient(60);
+  const supabase = createSupabaseServiceClient();
 
   const { data: communities } = await supabase
     .from('communities')

@@ -1,4 +1,4 @@
-import { createSupabaseServerClient } from '@/lib/supabase-server';
+import { createSupabaseServiceClient } from '@/lib/supabase-service';
 import AccessLogsClient from './access-logs-client';
 
 interface Community { id: string; name: string }
@@ -15,8 +15,10 @@ interface LogsPage { data: Log[]; total: number; limit: number; offset: number }
 
 const EMPTY_PAGE: LogsPage = { data: [], total: 0, limit: 50, offset: 0 };
 
+export const revalidate = 5;
+
 export default async function AccessLogsPage() {
-  const supabase = await createSupabaseServerClient(0);
+  const supabase = createSupabaseServiceClient();
 
   const { data: communities } = await supabase
     .from('communities')
