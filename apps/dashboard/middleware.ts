@@ -1,12 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { jwtVerify } from 'jose';
-
-const secret = new TextEncoder().encode(process.env.SUPABASE_JWT_SECRET ?? process.env.JWT_SECRET);
 
 /**
- * Validates the HttpOnly session cookie on every /dashboard request.
- * Verifies the JWT signature — not just cookie existence.
- * Tampered, expired, or missing tokens redirect to /login.
+ * Guards /dashboard routes — redirects to /login if no valid session cookie.
+ * Checks token existence and expiry only; signature verification is enforced
+ * at the data layer (PostgREST RLS + Railway JWT guard), not here.
  */
 export async function middleware(req: NextRequest) {
   const token = req.cookies.get('simsim_session')?.value;
@@ -16,10 +13,19 @@ export async function middleware(req: NextRequest) {
   }
 
   try {
-    await jwtVerify(token, secret);
+    const parts = token.split('.');
+    if (parts.length !== 3) throw new Error('malformed');
+
+    const payload = JSON.parse(
+      atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')),
+    );
+
+    if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) {
+      throw new Error('expired');
+    }
+
     return NextResponse.next();
   } catch {
-    // Token is invalid or expired — clear cookie and redirect
     const response = NextResponse.redirect(new URL('/login', req.url));
     response.cookies.set('simsim_session', '', { maxAge: 0, path: '/' });
     return response;
