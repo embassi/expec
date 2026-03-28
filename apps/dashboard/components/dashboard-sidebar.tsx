@@ -1,7 +1,8 @@
 'use client';
+import { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { logout as doLogout } from '@/lib/auth';
+import { createSupabaseClient } from '@/lib/supabase';
 
 const NAV = [
   { href: '/dashboard', label: 'Overview' },
@@ -16,18 +17,22 @@ const NAV = [
   { href: '/dashboard/policies', label: 'Policies' },
 ];
 
-interface SidebarUser {
-  phone_number?: string | null;
-  email?: string | null;
-  full_name?: string | null;
-}
-
-export default function DashboardSidebar({ user }: { user: SidebarUser | null }) {
+export default function DashboardSidebar() {
   const pathname = usePathname();
   const router = useRouter();
+  const [userLabel, setUserLabel] = useState<string | null>(null);
+
+  useEffect(() => {
+    const supabase = createSupabaseClient();
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      const u = session?.user;
+      if (u) setUserLabel(u.phone ?? u.email ?? null);
+    });
+  }, []);
 
   async function handleLogout() {
-    await doLogout();
+    const supabase = createSupabaseClient();
+    await supabase.auth.signOut();
     router.replace('/login');
   }
 
@@ -54,10 +59,8 @@ export default function DashboardSidebar({ user }: { user: SidebarUser | null })
         ))}
       </nav>
       <div className="px-5 py-4 border-t border-gray-100 space-y-2">
-        {user && (
-          <p className="text-xs text-gray-500 truncate">
-            {user.phone_number ?? user.email}
-          </p>
+        {userLabel && (
+          <p className="text-xs text-gray-500 truncate">{userLabel}</p>
         )}
         <button
           onClick={handleLogout}
