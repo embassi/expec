@@ -16,6 +16,7 @@ import { Twilio } from 'twilio';
 import { Resend } from 'resend';
 import { createHmac } from 'crypto';
 import * as Sentry from '@sentry/nestjs';
+import { User } from '@prisma/client';
 
 const MAX_OTP_ATTEMPTS = 5;
 const OTP_RESEND_COOLDOWN_MS = 60_000; // 60 seconds
