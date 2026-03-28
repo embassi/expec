@@ -5,6 +5,12 @@ import { ConfigService } from '@nestjs/config';
 import { passportJwtSecret } from 'jwks-rsa';
 import { PrismaService } from '../../prisma/prisma.service';
 
+interface JwtPayload {
+  sub: string;       // auth.users.id — NOT our public.users.id
+  phone?: string;    // present in phone-auth JWTs
+  email?: string;    // present in email-auth JWTs
+}
+
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
   constructor(
@@ -31,9 +37,17 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     });
   }
 
-  async validate(payload: { sub: string }) {
-    const user = await this.prisma.user.findUnique({
-      where: { id: payload.sub },
+  async validate(payload: JwtPayload) {
+    // Supabase JWT sub = auth.users.id, which is different from public.users.id.
+    // Look up by phone_number or email from the JWT claims instead.
+    const orConditions: { phone_number?: string; email?: string }[] = [];
+    if (payload.phone) orConditions.push({ phone_number: payload.phone });
+    if (payload.email) orConditions.push({ email: payload.email });
+
+    if (orConditions.length === 0) throw new UnauthorizedException();
+
+    const user = await this.prisma.user.findFirst({
+      where: { OR: orConditions },
       include: {
         memberships: {
           select: { role_type: true, community_id: true, approval_status: true },
