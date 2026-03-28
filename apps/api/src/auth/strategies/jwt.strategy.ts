@@ -41,7 +41,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     // Supabase JWT sub = auth.users.id, which is different from public.users.id.
     // Look up by phone_number or email from the JWT claims instead.
     const orConditions: { phone_number?: string; email?: string }[] = [];
-    if (payload.phone) orConditions.push({ phone_number: payload.phone });
+    if (payload.phone) {
+      // Supabase stores phone without '+' in auth.users; public.users stores it with '+'
+      const phone = payload.phone.startsWith('+') ? payload.phone : `+${payload.phone}`;
+      orConditions.push({ phone_number: phone });
+    }
     if (payload.email) orConditions.push({ email: payload.email });
 
     if (orConditions.length === 0) throw new UnauthorizedException();
