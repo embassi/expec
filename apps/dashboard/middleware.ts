@@ -17,7 +17,7 @@ export async function middleware(req: NextRequest) {
     if (parts.length !== 3) throw new Error('malformed');
 
     const payload = JSON.parse(
-      atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')),
+      Buffer.from(parts[1], 'base64url').toString(),
     );
 
     if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) {
