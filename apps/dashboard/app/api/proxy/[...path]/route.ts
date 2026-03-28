@@ -1,32 +1,36 @@
+import { createServerClient } from '@supabase/ssr';
+import { cookies } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
 
 const API_URL = process.env.API_URL ?? 'http://localhost:3000';
 
 /**
- * BFF proxy — forwards all dashboard API calls to the backend,
- * injecting the JWT from the HttpOnly session cookie as a Bearer token.
- *
- * This keeps the JWT off client-side JavaScript entirely:
- * - Client calls /api/proxy/admin/communities/...
- * - This route reads simsim_session (HttpOnly), adds Authorization header
- * - Forwards to the actual backend
+ * BFF proxy — forwards all dashboard mutations to Railway,
+ * injecting the Supabase JWT as a Bearer token.
+ * Reads the session from Supabase's own cookies (set by the browser client on login).
  */
 async function handler(
   req: NextRequest,
   { params }: { params: Promise<{ path: string[] }> },
 ) {
   const { path } = await params;
-  const token = req.cookies.get('simsim_session')?.value;
+  const cookieStore = await cookies();
+
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    { cookies: { getAll: () => cookieStore.getAll(), setAll: () => {} } },
+  );
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
 
   const searchParams = req.nextUrl.searchParams.toString();
   const targetUrl = `${API_URL}/${path.join('/')}${searchParams ? `?${searchParams}` : ''}`;
 
-  const headers: Record<string, string> = {
-    'Content-Type': req.headers.get('content-type') ?? 'application/json',
-  };
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
+  const headers: Record<string, string> = {};
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const contentType = req.headers.get('content-type');
+  if (contentType) headers['Content-Type'] = contentType;
 
   const body =
     req.method !== 'GET' && req.method !== 'HEAD'
@@ -43,18 +47,10 @@ async function handler(
     return NextResponse.json({ message: 'API unavailable' }, { status: 503 });
   }
 
-  const contentType = backendRes.headers.get('content-type') ?? 'application/json';
   const responseBody = await backendRes.text();
-
   return new NextResponse(responseBody, {
     status: backendRes.status,
-    headers: {
-      'Content-Type': contentType,
-      // Forward cache headers from backend
-      ...(backendRes.headers.get('Cache-Control')
-        ? { 'Cache-Control': backendRes.headers.get('Cache-Control')! }
-        : {}),
-    },
+    headers: { 'Content-Type': backendRes.headers.get('content-type') ?? 'application/json' },
   });
 }
 

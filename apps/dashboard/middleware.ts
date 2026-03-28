@@ -1,35 +1,33 @@
+import { createServerClient } from '@supabase/ssr';
 import { NextRequest, NextResponse } from 'next/server';
 
-/**
- * Guards /dashboard routes — redirects to /login if no valid session cookie.
- * Checks token existence and expiry only; signature verification is enforced
- * at the data layer (PostgREST RLS + Railway JWT guard), not here.
- */
 export async function middleware(req: NextRequest) {
-  const token = req.cookies.get('simsim_session')?.value;
+  let res = NextResponse.next({ request: req });
 
-  if (!token) {
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll: () => req.cookies.getAll(),
+        setAll: (cookiesToSet) => {
+          cookiesToSet.forEach(({ name, value, options }) => {
+            req.cookies.set(name, value);
+            res.cookies.set(name, value, options);
+          });
+        },
+      },
+    },
+  );
+
+  // getSession() reads from cookies locally; refreshes via Supabase only when expired.
+  const { data: { session } } = await supabase.auth.getSession();
+
+  if (!session) {
     return NextResponse.redirect(new URL('/login', req.url));
   }
 
-  try {
-    const parts = token.split('.');
-    if (parts.length !== 3) throw new Error('malformed');
-
-    const payload = JSON.parse(
-      Buffer.from(parts[1], 'base64url').toString(),
-    );
-
-    if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) {
-      throw new Error('expired');
-    }
-
-    return NextResponse.next();
-  } catch {
-    const response = NextResponse.redirect(new URL('/login', req.url));
-    response.cookies.set('simsim_session', '', { maxAge: 0, path: '/' });
-    return response;
-  }
+  return res;
 }
 
 export const config = {

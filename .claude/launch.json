@@ -20,6 +20,12 @@
       "port": 8081
     },
     {
+      "name": "Mobile (iOS Simulator)",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "mobile", "run", "ios"],
+      "port": 8081
+    },
+    {
       "name": "Scanner (Expo)",
       "runtimeExecutable": "pnpm",
       "runtimeArgs": ["-C", "apps/scanner", "exec", "expo", "start", "--port", "8083"],

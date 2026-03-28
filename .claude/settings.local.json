@@ -70,7 +70,17 @@
       "Bash(PGPASSWORD=Simsim2024Secure psql \"postgresql://postgres.hlfamuqgkrnkcyevituh:Simsim2024Secure@aws-1-eu-west-1.pooler.supabase.com:6543/postgres?sslmode=require\" -c \":*)",
       "Bash(railway logs:*)",
       "Bash(PGPASSWORD=Simsim2024Secure psql \"postgresql://postgres.hlfamuqgkrnkcyevituh:Simsim2024Secure@aws-1-eu-west-1.pooler.supabase.com:6543/postgres?sslmode=require\" -c \"SELECT scanner_code, device_key, community_id, is_active FROM scanners;\")",
-      "Bash(pnpm prisma:seed)"
+      "Bash(pnpm prisma:seed)",
+      "Bash(git remote:*)",
+      "Bash(git push:*)",
+      "Bash(gh auth:*)",
+      "Bash(find /Users/bigmac/Documents/Projects/simsim/simsim-claude -name *.toml -o -name railpack*)",
+      "Bash(curl -s https://patient-presence-production-7e3f.up.railway.app/health)",
+      "Bash(curl -s https://patient-presence-production-7e3f.up.railway.app/)",
+      "Bash(psql postgresql://bigmac@localhost:5432/simsim_dev -c \"UPDATE users SET role_type = ''super_admin'' WHERE phone_number = ''+201558606258'';\")",
+      "Bash(psql postgresql://bigmac@localhost:5432/simsim_dev -c \"UPDATE users SET role_type = ''super_admin'' WHERE phone_number = ''+201003028508''; UPDATE users SET role_type = ''user'' WHERE phone_number = ''+201558606258'';\")",
+      "Bash(pnpm --filter dashboard add swr)",
+      "Bash(pnpm --filter @simsim/mobile add @tanstack/react-query expo-secure-store)"
     ]
   }
 }

@@ -85,7 +85,7 @@ export default function CommunitiesScreen() {
                 </Text>
               </View>
             )}
-          </Animated.View>
+          </Animated>
         );
       }}
     />

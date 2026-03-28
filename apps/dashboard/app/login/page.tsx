@@ -1,13 +1,11 @@
 'use client';
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { createSupabaseClient } from '@/lib/supabase';
 
 type Method = 'phone' | 'email';
 type Step = 'input' | 'otp';
 
 export default function LoginPage() {
-  const router = useRouter();
   const [method, setMethod] = useState<Method>('phone');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
@@ -53,45 +51,18 @@ export default function LoginPage() {
     setError('');
     setLoading(true);
     try {
-      let sessionData;
       if (method === 'phone') {
-        const { data, error } = await supabase.auth.verifyOtp({
-          phone,
-          token: otp,
-          type: 'sms',
-        });
+        const { error } = await supabase.auth.verifyOtp({ phone, token: otp, type: 'sms' });
         if (error) throw new Error(error.message);
-        sessionData = data;
       } else {
-        const { data, error } = await supabase.auth.verifyOtp({
-          email,
-          token: otp,
-          type: 'email',
-        });
+        const { error } = await supabase.auth.verifyOtp({ email, token: otp, type: 'email' });
         if (error) throw new Error(error.message);
-        sessionData = data;
       }
-
-      const accessToken = sessionData.session?.access_token;
-      if (!accessToken) throw new Error('No session returned');
-
-      // Store the Supabase JWT as an HttpOnly cookie for SSR and set up our user
-      const res = await fetch('/api/auth/callback', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'same-origin',
-        body: JSON.stringify({ access_token: accessToken, refresh_token: sessionData.session?.refresh_token }),
-      });
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ message: 'Login failed' }));
-        throw new Error(err.message ?? 'Login failed');
-      }
-
-      router.replace('/dashboard');
+      // Supabase client sets its own session cookies automatically.
+      // Hard navigation ensures they're included in the next server request.
+      window.location.href = '/dashboard';
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Invalid OTP');
-    } finally {
       setLoading(false);
     }
   }
