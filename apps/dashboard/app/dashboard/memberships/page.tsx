@@ -1,6 +1,5 @@
 import { createSupabaseServiceClient } from '@/lib/supabase-service';
 import MembershipsClient from './memberships-client';
-import type { PaginatedResponse } from '@simsim/types';
 
 interface Community { id: string; name: string }
 interface Unit { id: string; unit_code: string }
@@ -9,6 +8,7 @@ interface Membership {
   approval_status: string;
   relationship_type: string;
   role_type: string;
+  community_id: string;
   user: { phone_number: string; full_name: string | null; status: string };
   unit: { unit_code: string } | null;
 }
@@ -18,48 +18,37 @@ export const revalidate = 15;
 export default async function MembershipsPage() {
   const supabase = createSupabaseServiceClient();
 
-  const { data: communities } = await supabase
-    .from('communities')
-    .select('id, name')
-    .order('created_at', { ascending: false });
-
-  const defaultId = communities?.[0]?.id ?? '';
-
-  const [membershipsResult, units] = await Promise.all([
-    defaultId
-      ? supabase
-          .from('memberships')
-          .select(
-            'id, approval_status, relationship_type, role_type, user:user_id(phone_number, full_name, status), unit:unit_id(unit_code)',
-            { count: 'exact' },
-          )
-          .eq('community_id', defaultId)
-          .order('created_at', { ascending: false })
-          .range(0, 49)
-      : Promise.resolve({ data: [], count: 0, error: null }),
-    defaultId
-      ? supabase
-          .from('units')
-          .select('id, unit_code')
-          .eq('community_id', defaultId)
-          .order('unit_code')
-          .then(({ data }) => (data ?? []) as Unit[])
-      : Promise.resolve([] as Unit[]),
+  const [{ data: communities }, { data: allMembershipsRaw }, { data: allUnitsRaw }] = await Promise.all([
+    supabase.from('communities').select('id, name').order('created_at', { ascending: false }),
+    supabase
+      .from('memberships')
+      .select('id, approval_status, relationship_type, role_type, community_id, user:user_id(phone_number, full_name, status), unit:unit_id(unit_code)')
+      .order('created_at', { ascending: false }),
+    supabase.from('units').select('id, unit_code, community_id').order('unit_code'),
   ]);
 
-  const memberships: PaginatedResponse<Membership> = {
-    data: (membershipsResult.data ?? []) as unknown as Membership[],
-    total: membershipsResult.count ?? 0,
-    limit: 50,
-    offset: 0,
-  };
+  const membershipsByCommunity = ((allMembershipsRaw ?? []) as unknown as Membership[]).reduce<Record<string, Membership[]>>(
+    (acc, m) => {
+      (acc[m.community_id] ??= []).push(m);
+      return acc;
+    },
+    {},
+  );
+
+  const unitsByCommunity = ((allUnitsRaw ?? []) as (Unit & { community_id: string })[]).reduce<Record<string, Unit[]>>(
+    (acc, { community_id, ...unit }) => {
+      (acc[community_id] ??= []).push(unit);
+      return acc;
+    },
+    {},
+  );
 
   return (
     <MembershipsClient
-      initialCommunities={(communities ?? []) as Community[]}
-      initialMemberships={memberships}
-      initialUnits={units}
-      defaultCommunityId={defaultId}
+      communities={(communities ?? []) as Community[]}
+      membershipsByCommunity={membershipsByCommunity}
+      unitsByCommunity={unitsByCommunity}
+      defaultCommunityId={communities?.[0]?.id ?? ''}
     />
   );
 }

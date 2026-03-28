@@ -2,13 +2,10 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
-import { useFetch, mutate } from '@/lib/hooks';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell, TableEmpty } from '@/components/ui/table';
-import { Skeleton } from '@/components/ui/skeleton';
-import type { PaginatedResponse } from '@simsim/types';
 
 interface Community { id: string; name: string }
 interface Unit { id: string; unit_code: string }
@@ -17,6 +14,7 @@ interface Membership {
   approval_status: string;
   relationship_type: string;
   role_type: string;
+  community_id: string;
   user: { phone_number: string; full_name: string | null; status: string };
   unit: { unit_code: string } | null;
 }
@@ -30,14 +28,15 @@ const STATUS_VARIANT: Record<string, 'success' | 'warning' | 'error' | 'muted'> 
 };
 
 interface Props {
-  initialCommunities: Community[];
-  initialMemberships: PaginatedResponse<Membership>;
-  initialUnits: Unit[];
+  communities: Community[];
+  membershipsByCommunity: Record<string, Membership[]>;
+  unitsByCommunity: Record<string, Unit[]>;
   defaultCommunityId: string;
 }
 
-export default function MembershipsClient({ initialCommunities, initialMemberships, initialUnits, defaultCommunityId }: Props) {
-  const [selected, setSelected] = useState(defaultCommunityId);
+export default function MembershipsClient({ communities, membershipsByCommunity, unitsByCommunity, defaultCommunityId }: Props) {
+  const [selectedId, setSelectedId] = useState(defaultCommunityId);
+  const [localData, setLocalData] = useState<Record<string, Membership[]>>(membershipsByCommunity);
   const [updating, setUpdating] = useState('');
   const [resending, setResending] = useState('');
   const [showForm, setShowForm] = useState(false);
@@ -46,31 +45,25 @@ export default function MembershipsClient({ initialCommunities, initialMembershi
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  const { data: communities } = useFetch<Community[]>('/admin/communities', { fallbackData: initialCommunities });
-  const communityId = selected || communities?.[0]?.id || '';
-  const membershipsKey = communityId ? `/admin/communities/${communityId}/memberships` : null;
-  const { data: page, isLoading } = useFetch<PaginatedResponse<Membership>>(membershipsKey, {
-    fallbackData: communityId === defaultCommunityId ? initialMemberships : undefined,
-  });
-  const memberships = page?.data;
-  const { data: units } = useFetch<Unit[]>(
-    communityId ? `/admin/communities/${communityId}/units` : null,
-    { fallbackData: communityId === defaultCommunityId ? initialUnits : undefined },
-  );
+  const memberships = localData[selectedId] ?? [];
+  const units = unitsByCommunity[selectedId] ?? [];
 
   async function updateStatus(id: string, status: string) {
-    const key = `/admin/communities/${communityId}/memberships`;
     setUpdating(id);
-    mutate(key, (current: PaginatedResponse<Membership> | undefined) =>
-      current ? { ...current, data: current.data.map(m => m.id === id ? { ...m, approval_status: status } : m) } : current,
-      { revalidate: false }
-    );
+    setLocalData(prev => ({
+      ...prev,
+      [selectedId]: (prev[selectedId] ?? []).map(m => m.id === id ? { ...m, approval_status: status } : m),
+    }));
     try {
       await api.patch(`/admin/memberships/${id}`, { approval_status: status });
       toast.success(`Membership ${status}`);
-      mutate(key);
     } catch {
-      mutate(key);
+      setLocalData(prev => ({
+        ...prev,
+        [selectedId]: (prev[selectedId] ?? []).map(m =>
+          m.id === id ? { ...m, approval_status: membershipsByCommunity[selectedId]?.find(o => o.id === id)?.approval_status ?? m.approval_status } : m
+        ),
+      }));
       toast.error('Failed to update membership');
     } finally {
       setUpdating('');
@@ -95,19 +88,18 @@ export default function MembershipsClient({ initialCommunities, initialMembershi
     setError('');
     try {
       if (formMode === 'owner') {
-        await api.post(`/admin/communities/${communityId}/assign-owner`, {
+        await api.post(`/admin/communities/${selectedId}/assign-owner`, {
           phone_number: form.phone_number,
           unit_id: form.unit_id,
         });
       } else {
-        await api.post(`/admin/communities/${communityId}/managers`, {
+        await api.post(`/admin/communities/${selectedId}/managers`, {
           phone_number: form.phone_number,
         });
       }
       setShowForm(false);
       setForm({ phone_number: '', unit_id: '' });
-      toast.success('Member added');
-      mutate(`/admin/communities/${communityId}/memberships`);
+      toast.success('Member added — refresh to see them');
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed');
     } finally {
@@ -120,9 +112,12 @@ export default function MembershipsClient({ initialCommunities, initialMembershi
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-xl font-semibold">Memberships</h2>
         <div className="flex gap-3">
-          <select value={selected || communityId} onChange={e => setSelected(e.target.value)}
-            className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500">
-            {(communities || []).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          <select
+            value={selectedId}
+            onChange={e => { setSelectedId(e.target.value); setShowForm(false); }}
+            className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+          >
+            {communities.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
           <Button onClick={() => setShowForm(true)} size="sm">+ Add Member</Button>
         </div>
@@ -150,7 +145,7 @@ export default function MembershipsClient({ initialCommunities, initialMembershi
                 <select value={form.unit_id} onChange={e => setForm(f => ({ ...f, unit_id: e.target.value }))} required
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500">
                   <option value="">— select unit —</option>
-                  {(units || []).map(u => <option key={u.id} value={u.id}>{u.unit_code}</option>)}
+                  {units.map(u => <option key={u.id} value={u.id}>{u.unit_code}</option>)}
                 </select>
               </div>
             )}
@@ -163,73 +158,61 @@ export default function MembershipsClient({ initialCommunities, initialMembershi
         </div>
       )}
 
-      {isLoading ? (
-        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-          <div className="h-10 bg-gray-50 border-b border-gray-200" />
-          {[1,2,3,4].map(i => (
-            <div key={i} className="flex gap-4 px-4 py-3 border-b border-gray-100">
-              <div className="flex-[2] space-y-1"><Skeleton className="h-4" /><Skeleton className="h-3 w-2/3" /></div>
-              {[1,2,3,4,5].map(j => <Skeleton key={j} className="flex-1 h-4" />)}
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Member</TableHead>
-                <TableHead>Unit</TableHead>
-                <TableHead>Relationship</TableHead>
-                <TableHead>Role</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Actions</TableHead>
+      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Member</TableHead>
+              <TableHead>Unit</TableHead>
+              <TableHead>Relationship</TableHead>
+              <TableHead>Role</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {memberships.map(m => (
+              <TableRow key={m.id}>
+                <TableCell>
+                  <p className="font-medium">{m.user.full_name || m.user.phone_number}</p>
+                  {m.user.full_name && <p className="text-gray-400 text-xs">{m.user.phone_number}</p>}
+                  <Badge variant={m.user.status === 'active' ? 'success' : 'warning'} className="mt-1">
+                    {m.user.status === 'active' ? 'Registered' : 'Not Registered'}
+                  </Badge>
+                </TableCell>
+                <TableCell className="text-gray-500">{m.unit?.unit_code || '—'}</TableCell>
+                <TableCell className="text-gray-500">{m.relationship_type || '—'}</TableCell>
+                <TableCell className="text-gray-500">{m.role_type}</TableCell>
+                <TableCell>
+                  <Badge variant={STATUS_VARIANT[m.approval_status] ?? 'muted'}>{m.approval_status}</Badge>
+                </TableCell>
+                <TableCell>
+                  <div className="flex gap-2">
+                    {m.approval_status === 'pending' && (
+                      <>
+                        <Button variant="ghost" size="sm" disabled={updating === m.id}
+                          className="text-xs text-brand-700 hover:bg-brand-50 h-7 px-2"
+                          onClick={() => updateStatus(m.id, 'approved')}>Approve</Button>
+                        <Button variant="ghost" size="sm" disabled={updating === m.id}
+                          className="text-xs text-red-600 hover:bg-red-50 h-7 px-2"
+                          onClick={() => updateStatus(m.id, 'rejected')}>Reject</Button>
+                      </>
+                    )}
+                    {m.user.status === 'invited' && (
+                      <Button variant="ghost" size="sm" disabled={resending === m.id}
+                        className="text-xs text-yellow-700 hover:bg-yellow-50 h-7 px-2"
+                        onClick={() => resendInvite(m.id)}>
+                        {resending === m.id ? 'Sending…' : 'Resend Invite'}
+                      </Button>
+                    )}
+                  </div>
+                </TableCell>
               </TableRow>
-            </TableHeader>
-            <TableBody>
-              {(memberships || []).map(m => (
-                <TableRow key={m.id}>
-                  <TableCell>
-                    <p className="font-medium">{m.user.full_name || m.user.phone_number}</p>
-                    {m.user.full_name && <p className="text-gray-400 text-xs">{m.user.phone_number}</p>}
-                    <Badge variant={m.user.status === 'active' ? 'success' : 'warning'} className="mt-1">
-                      {m.user.status === 'active' ? 'Registered' : 'Not Registered'}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-gray-500">{m.unit?.unit_code || '—'}</TableCell>
-                  <TableCell className="text-gray-500">{m.relationship_type || '—'}</TableCell>
-                  <TableCell className="text-gray-500">{m.role_type}</TableCell>
-                  <TableCell>
-                    <Badge variant={STATUS_VARIANT[m.approval_status] ?? 'muted'}>{m.approval_status}</Badge>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex gap-2">
-                      {m.approval_status === 'pending' && (
-                        <>
-                          <Button variant="ghost" size="sm" disabled={updating === m.id}
-                            className="text-xs text-brand-700 hover:bg-brand-50 h-7 px-2"
-                            onClick={() => updateStatus(m.id, 'approved')}>Approve</Button>
-                          <Button variant="ghost" size="sm" disabled={updating === m.id}
-                            className="text-xs text-red-600 hover:bg-red-50 h-7 px-2"
-                            onClick={() => updateStatus(m.id, 'rejected')}>Reject</Button>
-                        </>
-                      )}
-                      {m.user.status === 'invited' && (
-                        <Button variant="ghost" size="sm" disabled={resending === m.id}
-                          className="text-xs text-yellow-700 hover:bg-yellow-50 h-7 px-2"
-                          onClick={() => resendInvite(m.id)}>
-                          {resending === m.id ? 'Sending…' : 'Resend Invite'}
-                        </Button>
-                      )}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-              {(memberships || []).length === 0 && <TableEmpty colSpan={6}>No memberships</TableEmpty>}
-            </TableBody>
-          </Table>
-        </div>
-      )}
+            ))}
+            {memberships.length === 0 && <TableEmpty colSpan={6}>No memberships</TableEmpty>}
+          </TableBody>
+        </Table>
+      </div>
     </div>
   );
 }
