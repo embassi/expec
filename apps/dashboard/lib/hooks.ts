@@ -7,6 +7,7 @@ export function useFetch<T>(path: string | null, options?: { fallbackData?: T })
     (p: string) => api.get<T>(p),
     {
       fallbackData: options?.fallbackData,
+      revalidateIfStale: false,
       revalidateOnFocus: false,
       revalidateOnReconnect: false,
     },
