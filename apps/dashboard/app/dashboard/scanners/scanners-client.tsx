@@ -2,12 +2,10 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
-import { useFetch, mutate } from '@/lib/hooks';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell, TableEmpty } from '@/components/ui/table';
-import { Skeleton } from '@/components/ui/skeleton';
 
 interface Community { id: string; name: string }
 interface Scanner {
@@ -21,13 +19,14 @@ interface Scanner {
 }
 
 interface Props {
-  initialCommunities: Community[];
-  initialScanners: Scanner[];
+  communities: Community[];
+  scannersByCommunity: Record<string, Scanner[]>;
   defaultCommunityId: string;
 }
 
-export default function ScannersClient({ initialCommunities, initialScanners, defaultCommunityId }: Props) {
-  const [selected, setSelected] = useState(defaultCommunityId);
+export default function ScannersClient({ communities, scannersByCommunity, defaultCommunityId }: Props) {
+  const [selectedId, setSelectedId] = useState(defaultCommunityId);
+  const [localData, setLocalData] = useState<Record<string, Scanner[]>>(scannersByCommunity);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ scanner_name: '', scanner_code: '', location_label: '' });
   const [saving, setSaving] = useState(false);
@@ -35,23 +34,18 @@ export default function ScannersClient({ initialCommunities, initialScanners, de
   const [assigning, setAssigning] = useState<Record<string, boolean>>({});
   const [assignPhone, setAssignPhone] = useState<Record<string, string>>({});
 
-  const { data: communities } = useFetch<Community[]>('/admin/communities', { fallbackData: initialCommunities });
-  const communityId = selected || communities?.[0]?.id || '';
-  const scannersKey = communityId ? `/admin/communities/${communityId}/scanners` : null;
-  const { data: scanners, error: scannersError, isLoading } = useFetch<Scanner[]>(scannersKey, {
-    fallbackData: communityId === defaultCommunityId ? initialScanners : undefined,
-  });
+  const scanners = localData[selectedId] ?? [];
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
     try {
-      const created = await api.post<Scanner>('/admin/scanners', { ...form, community_id: communityId });
+      const created = await api.post<Scanner>('/admin/scanners', { ...form, community_id: selectedId });
+      setLocalData(prev => ({ ...prev, [selectedId]: [created, ...(prev[selectedId] ?? [])] }));
       setNewScanner(created);
       setShowForm(false);
       setForm({ scanner_name: '', scanner_code: '', location_label: '' });
       toast.success('Scanner created — save the credentials below');
-      mutate(`/admin/communities/${communityId}/scanners`);
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'Failed to create scanner');
     } finally {
@@ -60,16 +54,17 @@ export default function ScannersClient({ initialCommunities, initialScanners, de
   }
 
   async function toggle(id: string) {
-    const key = `/admin/communities/${communityId}/scanners`;
-    mutate(key, (current: Scanner[] | undefined) =>
-      current?.map(s => s.id === id ? { ...s, is_active: !s.is_active } : s),
-      { revalidate: false }
-    );
+    setLocalData(prev => ({
+      ...prev,
+      [selectedId]: (prev[selectedId] ?? []).map(s => s.id === id ? { ...s, is_active: !s.is_active } : s),
+    }));
     try {
       await api.patch(`/admin/scanners/${id}/toggle`, {});
-      mutate(key);
     } catch {
-      mutate(key);
+      setLocalData(prev => ({
+        ...prev,
+        [selectedId]: (prev[selectedId] ?? []).map(s => s.id === id ? { ...s, is_active: !s.is_active } : s),
+      }));
       toast.error('Failed to toggle scanner');
     }
   }
@@ -82,7 +77,6 @@ export default function ScannersClient({ initialCommunities, initialScanners, de
       await api.patch(`/admin/scanners/${id}/assign`, { phone_number: phone });
       setAssignPhone(p => ({ ...p, [id]: '' }));
       toast.success('Scanner assigned');
-      mutate(`/admin/communities/${communityId}/scanners`);
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'Failed to assign scanner');
     } finally {
@@ -95,9 +89,12 @@ export default function ScannersClient({ initialCommunities, initialScanners, de
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-xl font-semibold">Scanners</h2>
         <div className="flex gap-3">
-          <select value={selected || communityId} onChange={e => setSelected(e.target.value)}
-            className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500">
-            {(communities || []).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          <select
+            value={selectedId}
+            onChange={e => { setSelectedId(e.target.value); setShowForm(false); }}
+            className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+          >
+            {communities.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
           <Button onClick={() => setShowForm(true)} size="sm">+ Add Scanner</Button>
         </div>
@@ -125,8 +122,7 @@ export default function ScannersClient({ initialCommunities, initialScanners, de
             ].map(({ key, label, required }) => (
               <div key={key}>
                 <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
-                <Input value={form[key as keyof typeof form]} onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
-                  required={required} />
+                <Input value={form[key as keyof typeof form]} onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))} required={required} />
               </div>
             ))}
             <div className="col-span-2 flex gap-2">
@@ -137,79 +133,57 @@ export default function ScannersClient({ initialCommunities, initialScanners, de
         </div>
       )}
 
-      {scannersError && (
-        <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-6 text-sm text-red-700">
-          Failed to load scanners: {scannersError.message}. The database may need a migration.
-        </div>
-      )}
-
-      {isLoading ? (
-        <div className="space-y-2">
-          {[1,2,3].map(i => <Skeleton key={i} className="h-14 rounded-xl" />)}
-        </div>
-      ) : (
-        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Location</TableHead>
-                <TableHead>Code</TableHead>
-                <TableHead>Assigned User</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {(scanners || []).map(s => (
-                <TableRow key={s.id}>
-                  <TableCell className="font-medium">{s.scanner_name}</TableCell>
-                  <TableCell className="text-gray-500">{s.location_label || '—'}</TableCell>
-                  <TableCell className="font-mono text-xs text-gray-500">{s.scanner_code}</TableCell>
-                  <TableCell>
-                    {s.assigned_user ? (
-                      <div className="mb-2">
-                        <p className="font-medium text-gray-800">{s.assigned_user.full_name || s.assigned_user.phone_number}</p>
-                        {s.assigned_user.full_name && <p className="text-xs text-gray-400">{s.assigned_user.phone_number}</p>}
-                      </div>
-                    ) : (
-                      <p className="text-gray-400 text-xs mb-2">Unassigned</p>
-                    )}
-                    <div className="flex gap-1">
-                      <Input
-                        value={assignPhone[s.id] || ''}
-                        onChange={e => setAssignPhone(p => ({ ...p, [s.id]: e.target.value }))}
-                        placeholder="+201234567890"
-                        className="h-7 text-xs w-36"
-                      />
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => assignScanner(s.id)}
-                        disabled={assigning[s.id] || !(assignPhone[s.id] || '').trim()}
-                        className="h-7 px-2 text-xs text-brand-700 hover:bg-brand-50"
-                      >
-                        {assigning[s.id] ? '…' : 'Assign'}
-                      </Button>
+      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Name</TableHead>
+              <TableHead>Location</TableHead>
+              <TableHead>Code</TableHead>
+              <TableHead>Assigned User</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {scanners.map(s => (
+              <TableRow key={s.id}>
+                <TableCell className="font-medium">{s.scanner_name}</TableCell>
+                <TableCell className="text-gray-500">{s.location_label || '—'}</TableCell>
+                <TableCell className="font-mono text-xs text-gray-500">{s.scanner_code}</TableCell>
+                <TableCell>
+                  {s.assigned_user ? (
+                    <div className="mb-2">
+                      <p className="font-medium text-gray-800">{s.assigned_user.full_name || s.assigned_user.phone_number}</p>
+                      {s.assigned_user.full_name && <p className="text-xs text-gray-400">{s.assigned_user.phone_number}</p>}
                     </div>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={s.is_active ? 'success' : 'muted'}>{s.is_active ? 'Active' : 'Inactive'}</Badge>
-                  </TableCell>
-                  <TableCell>
-                    <button onClick={() => toggle(s.id)} className="text-xs text-brand-600 hover:underline">
-                      {s.is_active ? 'Disable' : 'Enable'}
-                    </button>
-                  </TableCell>
-                </TableRow>
-              ))}
-              {!isLoading && (scanners || []).length === 0 && !scannersError && (
-                <TableEmpty colSpan={6}>No scanners yet</TableEmpty>
-              )}
-            </TableBody>
-          </Table>
-        </div>
-      )}
+                  ) : (
+                    <p className="text-gray-400 text-xs mb-2">Unassigned</p>
+                  )}
+                  <div className="flex gap-1">
+                    <Input value={assignPhone[s.id] || ''} onChange={e => setAssignPhone(p => ({ ...p, [s.id]: e.target.value }))}
+                      placeholder="+201234567890" className="h-7 text-xs w-36" />
+                    <Button variant="ghost" size="sm" onClick={() => assignScanner(s.id)}
+                      disabled={assigning[s.id] || !(assignPhone[s.id] || '').trim()}
+                      className="h-7 px-2 text-xs text-brand-700 hover:bg-brand-50">
+                      {assigning[s.id] ? '…' : 'Assign'}
+                    </Button>
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <Badge variant={s.is_active ? 'success' : 'muted'}>{s.is_active ? 'Active' : 'Inactive'}</Badge>
+                </TableCell>
+                <TableCell>
+                  <button onClick={() => toggle(s.id)} className="text-xs text-brand-600 hover:underline">
+                    {s.is_active ? 'Disable' : 'Enable'}
+                  </button>
+                </TableCell>
+              </TableRow>
+            ))}
+            {scanners.length === 0 && <TableEmpty colSpan={6}>No scanners yet</TableEmpty>}
+          </TableBody>
+        </Table>
+      </div>
     </div>
   );
 }

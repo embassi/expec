@@ -8,6 +8,7 @@ interface ServiceRequest {
   description: string;
   status: string;
   created_at: string;
+  community_id: string;
   user: { full_name: string | null; phone_number: string };
 }
 
@@ -16,29 +17,27 @@ export const revalidate = 15;
 export default async function ServiceRequestsPage() {
   const supabase = createSupabaseServiceClient();
 
-  const { data: communities } = await supabase
-    .from('communities')
-    .select('id, name')
-    .order('created_at', { ascending: false });
+  const [{ data: communities }, { data: allRaw }] = await Promise.all([
+    supabase.from('communities').select('id, name').order('created_at', { ascending: false }),
+    supabase
+      .from('service_requests')
+      .select('id, subject, description, status, created_at, community_id, user:user_id(full_name, phone_number)')
+      .order('created_at', { ascending: false }),
+  ]);
 
-  const defaultId = communities?.[0]?.id ?? '';
-
-  const requests: ServiceRequest[] = defaultId
-    ? await supabase
-        .from('service_requests')
-        .select('id, subject, description, status, created_at, user:user_id(full_name, phone_number)')
-        .eq('community_id', defaultId)
-        .order('created_at', { ascending: false })
-        .then(({ data }) =>
-          (data ?? []).map(r => ({ ...r, title: r.subject ?? '' })) as unknown as ServiceRequest[],
-        )
-    : [];
+  const requestsByCommunity = ((allRaw ?? []) as { id: string; subject: string; description: string; status: string; created_at: string; community_id: string; user: { full_name: string | null; phone_number: string } }[]).reduce<Record<string, ServiceRequest[]>>(
+    (acc, { community_id, subject, ...rest }) => {
+      (acc[community_id] ??= []).push({ ...rest, title: subject ?? '' });
+      return acc;
+    },
+    {},
+  );
 
   return (
     <ServiceRequestsClient
-      initialCommunities={(communities ?? []) as Community[]}
-      initialRequests={requests}
-      defaultCommunityId={defaultId}
+      communities={(communities ?? []) as Community[]}
+      requestsByCommunity={requestsByCommunity}
+      defaultCommunityId={communities?.[0]?.id ?? ''}
     />
   );
 }

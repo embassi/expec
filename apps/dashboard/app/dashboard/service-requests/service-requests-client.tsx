@@ -2,9 +2,7 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
-import { useFetch, mutate } from '@/lib/hooks';
 import { Badge } from '@/components/ui/badge';
-import { Skeleton } from '@/components/ui/skeleton';
 
 interface Community { id: string; name: string }
 interface ServiceRequest {
@@ -17,7 +15,6 @@ interface ServiceRequest {
 }
 
 const STATUSES = ['open', 'in_progress', 'resolved', 'closed'];
-
 const STATUS_VARIANT: Record<string, 'default' | 'warning' | 'success' | 'muted'> = {
   open: 'default',
   in_progress: 'warning',
@@ -26,30 +23,34 @@ const STATUS_VARIANT: Record<string, 'default' | 'warning' | 'success' | 'muted'
 };
 
 interface Props {
-  initialCommunities: Community[];
-  initialRequests: ServiceRequest[];
+  communities: Community[];
+  requestsByCommunity: Record<string, ServiceRequest[]>;
   defaultCommunityId: string;
 }
 
-export default function ServiceRequestsClient({ initialCommunities, initialRequests, defaultCommunityId }: Props) {
-  const [selected, setSelected] = useState(defaultCommunityId);
+export default function ServiceRequestsClient({ communities, requestsByCommunity, defaultCommunityId }: Props) {
+  const [selectedId, setSelectedId] = useState(defaultCommunityId);
+  const [localData, setLocalData] = useState<Record<string, ServiceRequest[]>>(requestsByCommunity);
   const [updating, setUpdating] = useState('');
 
-  const { data: communities } = useFetch<Community[]>('/admin/communities', { fallbackData: initialCommunities });
-  const communityId = selected || communities?.[0]?.id || null;
-  const requestsKey = communityId ? `/admin/communities/${communityId}/service-requests` : null;
-  const { data: page, isLoading } = useFetch<{ data: ServiceRequest[] }>(requestsKey, {
-    fallbackData: communityId === defaultCommunityId ? { data: initialRequests } : undefined,
-  });
-  const requests = page?.data;
+  const requests = localData[selectedId] ?? [];
 
   async function updateStatus(id: string, status: string) {
     setUpdating(id);
+    setLocalData(prev => ({
+      ...prev,
+      [selectedId]: (prev[selectedId] ?? []).map(r => r.id === id ? { ...r, status } : r),
+    }));
     try {
       await api.patch(`/admin/service-requests/${id}/status`, { status });
       toast.success('Status updated');
-      mutate(`/admin/communities/${communityId}/service-requests`);
     } catch (err: unknown) {
+      setLocalData(prev => ({
+        ...prev,
+        [selectedId]: (prev[selectedId] ?? []).map(r =>
+          r.id === id ? { ...r, status: requestsByCommunity[selectedId]?.find(o => o.id === id)?.status ?? r.status } : r
+        ),
+      }));
       toast.error(err instanceof Error ? err.message : 'Failed to update status');
     } finally {
       setUpdating('');
@@ -60,44 +61,37 @@ export default function ServiceRequestsClient({ initialCommunities, initialReque
     <div>
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-xl font-semibold">Service Requests</h2>
-        <select value={selected || communityId || ''} onChange={e => setSelected(e.target.value)}
-          className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500">
-          {communities?.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+        <select
+          value={selectedId}
+          onChange={e => setSelectedId(e.target.value)}
+          className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+        >
+          {communities.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
       </div>
 
-      {isLoading ? (
-        <div className="space-y-3">
-          {[1, 2, 3].map(i => <Skeleton key={i} className="h-24 rounded-xl" />)}
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {requests?.map(r => (
-            <div key={r.id} className="bg-white border border-gray-200 rounded-xl p-5">
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex-1">
-                  <p className="font-medium">{r.title}</p>
-                  <p className="text-sm text-gray-500 mt-0.5">{r.user.full_name || r.user.phone_number}</p>
-                  <p className="text-sm text-gray-600 mt-2">{r.description}</p>
-                </div>
-                <div className="flex flex-col items-end gap-2">
-                  <Badge variant={STATUS_VARIANT[r.status] ?? 'muted'}>{r.status.replace('_', ' ')}</Badge>
-                  <select
-                    value={r.status}
-                    disabled={updating === r.id}
-                    onChange={e => updateStatus(r.id, e.target.value)}
-                    className="text-xs border border-gray-200 rounded-lg px-2 py-1 focus:outline-none disabled:opacity-50"
-                  >
-                    {STATUSES.map(s => <option key={s} value={s}>{s.replace('_', ' ')}</option>)}
-                  </select>
-                </div>
+      <div className="space-y-3">
+        {requests.map(r => (
+          <div key={r.id} className="bg-white border border-gray-200 rounded-xl p-5">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex-1">
+                <p className="font-medium">{r.title}</p>
+                <p className="text-sm text-gray-500 mt-0.5">{r.user.full_name || r.user.phone_number}</p>
+                <p className="text-sm text-gray-600 mt-2">{r.description}</p>
               </div>
-              <p className="text-xs text-gray-400 mt-3">{new Date(r.created_at).toLocaleString()}</p>
+              <div className="flex flex-col items-end gap-2">
+                <Badge variant={STATUS_VARIANT[r.status] ?? 'muted'}>{r.status.replace('_', ' ')}</Badge>
+                <select value={r.status} disabled={updating === r.id} onChange={e => updateStatus(r.id, e.target.value)}
+                  className="text-xs border border-gray-200 rounded-lg px-2 py-1 focus:outline-none disabled:opacity-50">
+                  {STATUSES.map(s => <option key={s} value={s}>{s.replace('_', ' ')}</option>)}
+                </select>
+              </div>
             </div>
-          ))}
-          {!requests?.length && <p className="text-center text-gray-400 text-sm py-8">No service requests</p>}
-        </div>
-      )}
+            <p className="text-xs text-gray-400 mt-3">{new Date(r.created_at).toLocaleString()}</p>
+          </div>
+        ))}
+        {requests.length === 0 && <p className="text-center text-gray-400 text-sm py-8">No service requests</p>}
+      </div>
     </div>
   );
 }

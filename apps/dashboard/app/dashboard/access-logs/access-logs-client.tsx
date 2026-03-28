@@ -1,10 +1,7 @@
 'use client';
-import { useState } from 'react';
-import { useFetch } from '@/lib/hooks';
+import { useState, useMemo } from 'react';
 import { Badge } from '@/components/ui/badge';
-import { Pagination } from '@/components/ui/pagination';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell, TableEmpty } from '@/components/ui/table';
-import { Skeleton } from '@/components/ui/skeleton';
 
 interface Community { id: string; name: string }
 interface Log {
@@ -14,93 +11,118 @@ interface Log {
   scanned_at: string;
   resident_name: string | null;
   resident_phone: string | null;
+  community_id: string;
   scanner: { scanner_name: string } | null;
 }
-interface LogsPage { data: Log[]; total: number; limit: number; offset: number }
 
-const LIMIT = 50;
+const PAGE_SIZE = 50;
 
 interface Props {
-  initialCommunities: Community[];
-  initialLogs: LogsPage;
+  communities: Community[];
+  logsByCommunity: Record<string, Log[]>;
   defaultCommunityId: string;
 }
 
-export default function AccessLogsClient({ initialCommunities, initialLogs, defaultCommunityId }: Props) {
-  const [selected, setSelected] = useState(defaultCommunityId);
-  const [offset, setOffset] = useState(0);
+export default function AccessLogsClient({ communities, logsByCommunity, defaultCommunityId }: Props) {
+  const [selectedId, setSelectedId] = useState(defaultCommunityId);
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(0);
 
-  const { data: communities } = useFetch<Community[]>('/admin/communities', { fallbackData: initialCommunities });
-  const communityId = selected || communities?.[0]?.id || '';
-  const { data: page, isLoading } = useFetch<LogsPage>(
-    communityId ? `/admin/communities/${communityId}/access-logs?limit=${LIMIT}&offset=${offset}` : null,
-    { fallbackData: communityId === defaultCommunityId && offset === 0 ? initialLogs : undefined }
-  );
-  const logs = page?.data || [];
+  const allLogs = logsByCommunity[selectedId] ?? [];
 
-  function handleCommunityChange(id: string) {
-    setSelected(id);
-    setOffset(0);
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return allLogs;
+    return allLogs.filter(l =>
+      (l.resident_name ?? '').toLowerCase().includes(q) ||
+      (l.resident_phone ?? '').toLowerCase().includes(q) ||
+      (l.scanner?.scanner_name ?? '').toLowerCase().includes(q),
+    );
+  }, [allLogs, search]);
+
+  const pageCount = Math.ceil(filtered.length / PAGE_SIZE);
+  const pageLogs = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+
+  function switchCommunity(id: string) {
+    setSelectedId(id);
+    setSearch('');
+    setPage(0);
+  }
+
+  function handleSearch(q: string) {
+    setSearch(q);
+    setPage(0);
   }
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 gap-4">
         <h2 className="text-xl font-semibold">Access Logs</h2>
-        <select value={selected || communityId} onChange={e => handleCommunityChange(e.target.value)}
-          className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500">
-          {(communities || []).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </select>
+        <div className="flex gap-3 items-center">
+          <div className="relative">
+            <input
+              type="text"
+              placeholder="Search name, phone, scanner…"
+              value={search}
+              onChange={e => handleSearch(e.target.value)}
+              className="border border-gray-300 rounded-lg pl-3 pr-8 py-2 text-sm w-56 focus:outline-none focus:ring-2 focus:ring-brand-500"
+            />
+            {search && (
+              <button onClick={() => handleSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs">✕</button>
+            )}
+          </div>
+          <select
+            value={selectedId}
+            onChange={e => switchCommunity(e.target.value)}
+            className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+          >
+            {communities.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </div>
       </div>
 
-      {isLoading ? (
-        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-          <div className="h-10 bg-gray-50 border-b border-gray-200" />
-          {[1,2,3,4,5].map(i => (
-            <div key={i} className="flex gap-4 px-4 py-3 border-b border-gray-100">
-              {[1,2,3,4,5].map(j => <Skeleton key={j} className="flex-1 h-4" />)}
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Time</TableHead>
-                <TableHead>Person</TableHead>
-                <TableHead>Scanner</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Result</TableHead>
+      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Time</TableHead>
+              <TableHead>Name</TableHead>
+              <TableHead>Phone</TableHead>
+              <TableHead>Scanner</TableHead>
+              <TableHead>Type</TableHead>
+              <TableHead>Result</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {pageLogs.map(l => (
+              <TableRow key={l.id}>
+                <TableCell className="text-gray-500 whitespace-nowrap text-xs">{new Date(l.scanned_at).toLocaleString()}</TableCell>
+                <TableCell className="font-medium">{l.resident_name || '—'}</TableCell>
+                <TableCell className="text-gray-500 font-mono text-xs">{l.resident_phone || '—'}</TableCell>
+                <TableCell className="text-gray-500">{l.scanner?.scanner_name || '—'}</TableCell>
+                <TableCell className="text-gray-500">{l.scan_type || '—'}</TableCell>
+                <TableCell>
+                  <Badge variant={l.result === 'granted' ? 'success' : 'error'}>{l.result}</Badge>
+                </TableCell>
               </TableRow>
-            </TableHeader>
-            <TableBody>
-              {logs.map(l => (
-                <TableRow key={l.id}>
-                  <TableCell className="text-gray-500 whitespace-nowrap">{new Date(l.scanned_at).toLocaleString()}</TableCell>
-                  <TableCell>{l.resident_name || l.resident_phone || '—'}</TableCell>
-                  <TableCell className="text-gray-500">{l.scanner?.scanner_name || '—'}</TableCell>
-                  <TableCell className="text-gray-500">{l.scan_type || '—'}</TableCell>
-                  <TableCell>
-                    <Badge variant={l.result === 'granted' ? 'success' : 'error'}>{l.result}</Badge>
-                  </TableCell>
-                </TableRow>
-              ))}
-              {logs.length === 0 && <TableEmpty colSpan={5}>No logs yet</TableEmpty>}
-            </TableBody>
-          </Table>
-          {page && (
-            <div className="px-4 border-t border-gray-100">
-              <Pagination
-                total={page.total}
-                limit={page.limit}
-                offset={page.offset}
-                onOffsetChange={setOffset}
-              />
+            ))}
+            {pageLogs.length === 0 && <TableEmpty colSpan={6}>{search ? `No logs matching "${search}"` : 'No logs yet'}</TableEmpty>}
+          </TableBody>
+        </Table>
+
+        {pageCount > 1 && (
+          <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100 text-sm text-gray-500">
+            <span>{filtered.length} {search ? 'matching' : 'total'} logs</span>
+            <div className="flex gap-2">
+              <button onClick={() => setPage(p => p - 1)} disabled={page === 0}
+                className="px-3 py-1 border border-gray-200 rounded-lg disabled:opacity-40 hover:bg-gray-50">←</button>
+              <span className="px-2 py-1">{page + 1} / {pageCount}</span>
+              <button onClick={() => setPage(p => p + 1)} disabled={page >= pageCount - 1}
+                className="px-3 py-1 border border-gray-200 rounded-lg disabled:opacity-40 hover:bg-gray-50">→</button>
             </div>
-          )}
-        </div>
-      )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

@@ -17,27 +17,27 @@ export const revalidate = 60;
 export default async function ScannersPage() {
   const supabase = createSupabaseServiceClient();
 
-  const { data: communities } = await supabase
-    .from('communities')
-    .select('id, name')
-    .order('created_at', { ascending: false });
+  const [{ data: communities }, { data: allScannersRaw }] = await Promise.all([
+    supabase.from('communities').select('id, name').order('created_at', { ascending: false }),
+    supabase
+      .from('scanners')
+      .select('id, scanner_name, scanner_code, device_key, is_active, location_label, community_id, assigned_user:assigned_user_id(full_name, phone_number)')
+      .order('created_at', { ascending: false }),
+  ]);
 
-  const defaultId = communities?.[0]?.id ?? '';
-
-  const scanners: Scanner[] = defaultId
-    ? await supabase
-        .from('scanners')
-        .select('id, scanner_name, scanner_code, device_key, is_active, location_label, assigned_user:assigned_user_id(full_name, phone_number)')
-        .eq('community_id', defaultId)
-        .order('created_at', { ascending: false })
-        .then(({ data }) => (data ?? []) as unknown as Scanner[])
-    : [];
+  const scannersByCommunity = ((allScannersRaw ?? []) as unknown as (Scanner & { community_id: string })[]).reduce<Record<string, Scanner[]>>(
+    (acc, { community_id, ...scanner }) => {
+      (acc[community_id] ??= []).push(scanner);
+      return acc;
+    },
+    {},
+  );
 
   return (
     <ScannersClient
-      initialCommunities={(communities ?? []) as Community[]}
-      initialScanners={scanners}
-      defaultCommunityId={defaultId}
+      communities={(communities ?? []) as Community[]}
+      scannersByCommunity={scannersByCommunity}
+      defaultCommunityId={communities?.[0]?.id ?? ''}
     />
   );
 }
