@@ -1,5 +1,3 @@
-import { createServerClient } from '@supabase/ssr';
-import { cookies } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
 
 const API_URL = process.env.API_URL ?? 'http://localhost:3000';
@@ -7,22 +5,14 @@ const API_URL = process.env.API_URL ?? 'http://localhost:3000';
 /**
  * BFF proxy — forwards all dashboard mutations to Railway,
  * injecting the Supabase JWT as a Bearer token.
- * Reads the session from Supabase's own cookies (set by the browser client on login).
+ * Token is injected by middleware via x-access-token header.
  */
 async function handler(
   req: NextRequest,
   { params }: { params: Promise<{ path: string[] }> },
 ) {
   const { path } = await params;
-  const cookieStore = await cookies();
-
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { cookies: { getAll: () => cookieStore.getAll(), setAll: () => {} } },
-  );
-  const { data: { session } } = await supabase.auth.getSession();
-  const token = session?.access_token;
+  const token = req.headers.get('x-access-token') ?? undefined;
 
   const searchParams = req.nextUrl.searchParams.toString();
   const targetUrl = `${API_URL}/${path.join('/')}${searchParams ? `?${searchParams}` : ''}`;
